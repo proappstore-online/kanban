@@ -35,6 +35,8 @@ export interface Card {
   labels: Label[]
   checklist: ChecklistItem[]
   assignees: Assignee[]
+  /** Count of non-deleted comments. Rendered as a chip on the card preview. */
+  commentCount: number
   createdBy: string
   createdAt: number
   updatedAt: number
@@ -92,6 +94,60 @@ export interface Workspace {
 
 export interface WorkspaceWithRole extends Workspace {
   role: Role
+}
+
+export interface Comment {
+  id: string
+  cardId: string
+  authorId: string
+  authorDisplayName: string
+  authorAvatarUrl?: string
+  body: string
+  createdAt: number
+  updatedAt?: number
+  deletedAt?: number
+}
+
+export interface Mention {
+  id: string
+  commentId: string
+  cardId: string
+  boardId: string
+  mentionedUserId: string
+  actorId: string
+  actorDisplayName: string
+  actorAvatarUrl?: string
+  commentBody: string
+  cardTitle: string
+  readAt?: number
+  createdAt: number
+}
+
+export type ActivityKind =
+  | 'card.created'
+  | 'card.moved'
+  | 'card.updated'
+  | 'card.deleted'
+  | 'card.assigned'
+  | 'card.unassigned'
+  | 'comment.added'
+  | 'list.created'
+  | 'list.renamed'
+  | 'list.deleted'
+  | 'board.renamed'
+  | 'member.joined'
+
+export interface ActivityEntry {
+  id: string
+  boardId: string
+  cardId?: string
+  actorId: string
+  actorDisplayName: string
+  actorAvatarUrl?: string
+  kind: ActivityKind
+  /** Arbitrary key/value blob with kind-specific context (card title, list title, etc.). */
+  payload: Record<string, unknown>
+  createdAt: number
 }
 
 export interface Invite {

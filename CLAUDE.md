@@ -24,14 +24,31 @@ before writing or changing anything.
   per board (`board:<id>`).
 - No Pro paywall: per the platform decision, all Pro apps are unlocked pre-launch.
 
-## v1.5 (not yet built)
+## v1.5 (shipped)
 
-- Per-card comments + mentions + in-app notifications.
+- **Comments** on cards with realtime broadcast (`card.comment-added` /
+  `card.comment-deleted` patches). Soft delete (`deleted_at`) preserves the
+  activity-feed audit trail.
+- **@mentions** in comment bodies. `parseMentions` resolves `@<login>` tokens
+  against the workspace member list; matched users get a row in `mentions`
+  with an unread state.
+- **Mentions inbox bell** in the board's TopBar — unread count, dropdown of
+  recent mentions across the workspace, mark-as-read on click, "Mark all read"
+  shortcut. Polls every 30s.
+- **Activity feed drawer** on the board view. Each mutation (card create /
+  move / update / delete / assign, comment add, list create / rename / delete,
+  board rename) writes an `activity` row + broadcasts `activity.added`; the
+  drawer refetches the last 50 entries with a human-readable summary line.
+- **Comment-count chip** on the card preview.
+
+## v2 (not yet built)
+
 - Attachments via `app.storage`.
 - Email invites via `app.notifications.email`.
 - Import-from-FAS button (pull boards from the FAS KV `board:<id>` blobs).
-- Activity feed UI (rows are already written to the `activity` table — just no view).
 - Per-board ACL (board-level guest membership).
+- Filter "my cards" across boards.
+- Workspace-level mentions room push (replace 30s polling).
 
 ## Architecture
 

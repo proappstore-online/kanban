@@ -12,9 +12,11 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { User } from '@proappstore/sdk'
 import type {
+  ActivityEntry,
   BoardWithLists,
   Card,
   ChecklistItem,
+  Comment,
   Label,
   LabelColor,
   List,
@@ -23,13 +25,18 @@ import type {
 } from '../types'
 import {
   addAssignee,
+  addComment,
   createCard,
   createList,
   deleteCard,
+  deleteComment,
   deleteList,
   ensureBoardLabels,
   getBoardFull,
+  listBoardActivity,
+  listComments,
   listMembers,
+  logActivity,
   moveCard,
   removeAssignee,
   renameBoard,
@@ -43,6 +50,8 @@ import { TopBar } from '../components/TopBar'
 import { ListColumn } from '../components/ListColumn'
 import { CardModal } from '../components/CardModal'
 import { PresenceBar } from '../components/PresenceBar'
+import { ActivityPanel } from '../components/ActivityPanel'
+import { MentionsBell } from '../components/MentionsBell'
 
 interface BoardProps {
   boardId: string
@@ -55,10 +64,13 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
   const [board, setBoard] = useState<BoardWithLists | null | undefined>(undefined)
   const [members, setMembers] = useState<Member[]>([])
   const [openCard, setOpenCard] = useState<{ cardId: string; listId: string } | null>(null)
+  const [openCardComments, setOpenCardComments] = useState<Comment[]>([])
   const [addingList, setAddingList] = useState(false)
   const [newListTitle, setNewListTitle] = useState('')
   const [renamingBoard, setRenamingBoard] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
+  const [showActivity, setShowActivity] = useState(false)
+  const [activity, setActivity] = useState<ActivityEntry[]>([])
 
   const refetch = useCallback(async () => {
     const next = await getBoardFull(workspace.id, boardId)
@@ -82,6 +94,38 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     }
   }, [workspace.id, boardId])
 
+  // Load comments when a card opens. Re-fetched on demand when realtime
+  // patches indicate a remote comment change for the same card.
+  const openCardId = openCard?.cardId ?? null
+  useEffect(() => {
+    if (!openCardId) {
+      setOpenCardComments([])
+      return
+    }
+    let cancelled = false
+    listComments(workspace.id, openCardId)
+      .then((cs) => {
+        if (!cancelled) setOpenCardComments(cs)
+      })
+      .catch(() => {
+        if (!cancelled) setOpenCardComments([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspace.id, openCardId])
+
+  // Activity feed: fetched when the panel is opened, then refetched on
+  // any board mutation that broadcasts `activity.added`.
+  const refetchActivity = useCallback(async () => {
+    const a = await listBoardActivity(workspace.id, boardId, 50)
+    setActivity(a)
+  }, [workspace.id, boardId])
+  useEffect(() => {
+    if (!showActivity) return
+    refetchActivity().catch(() => {})
+  }, [showActivity, refetchActivity])
+
   // Realtime: apply incoming patches by either patching local state directly
   // for the trivial cases (board rename, list rename) or refetching the whole
   // board for anything structural. v1 trade: simpler + always correct. We can
@@ -101,11 +145,25 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
             }
           })
           return
+        case 'card.comment-added':
+        case 'card.comment-deleted':
+          // Refetch comments for the open card (if it matches) and bump
+          // the board's per-card comment count by re-running getBoardFull.
+          if (openCardId === patch.cardId) {
+            listComments(workspace.id, patch.cardId)
+              .then(setOpenCardComments)
+              .catch(() => {})
+          }
+          refetch().catch(() => {})
+          return
+        case 'activity.added':
+          if (showActivity) refetchActivity().catch(() => {})
+          return
         default:
           refetch().catch(() => {})
       }
     },
-    [refetch],
+    [refetch, refetchActivity, openCardId, showActivity, workspace.id],
   )
 
   const { peers, broadcast } = useBoardRoom(boardId, handlePatch)
@@ -208,6 +266,11 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
         fromListId === list.id && prevPos === null && nextPos === null && list.cards.length === 1
       if (neighboursUnchanged) return latest
 
+      const movedAcross = fromListId !== list.id
+      const fromListTitle = latest.lists.find((l) => l.id === fromListId)?.title
+      const toListTitle = list.title
+      const movedCardTitle = list.cards.find((c) => c.id === activeId)?.title
+
       moveCard(workspace.id, activeId, list.id, prevPos, nextPos)
         .then((position) => {
           setBoard((b) => {
@@ -225,6 +288,13 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
             toListId: list.id,
             position,
           })
+          if (movedAcross) {
+            logAndAnnounce(
+              'card.moved',
+              { title: movedCardTitle, from: fromListTitle, to: toListTitle },
+              activeId,
+            )
+          }
         })
         .catch(() => {
           refetch().catch(() => {})
@@ -262,6 +332,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     const next = await createList(workspace.id, board.id, t, lastPos)
     setBoard((b) => (b ? { ...b, lists: [...b.lists, next] } : b))
     broadcast({ kind: 'list.created', listId: next.id })
+    logAndAnnounce('list.created', { listId: next.id, title: t })
   }
 
   async function commitRenameBoard() {
@@ -269,9 +340,11 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     if (!board) return
     const t = nameDraft.trim()
     if (!t || t === board.name) return
+    const prev = board.name
     setBoard((b) => (b ? { ...b, name: t } : b))
     await renameBoard(workspace.id, board.id, t)
     broadcast({ kind: 'board.renamed', name: t })
+    logAndAnnounce('board.renamed', { from: prev, to: t })
   }
 
   async function handleAddCard(list: List, title: string) {
@@ -286,6 +359,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
       }
     })
     broadcast({ kind: 'card.created', listId: list.id, cardId: card.id })
+    logAndAnnounce('card.created', { title, listTitle: list.title }, card.id)
   }
 
   async function handleRenameList(listId: string, title: string) {
@@ -298,15 +372,34 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     })
     await renameList(workspace.id, listId, title)
     broadcast({ kind: 'list.renamed', listId, title })
+    logAndAnnounce('list.renamed', { listId, title })
   }
 
   async function handleDeleteList(listId: string) {
+    const list = board?.lists.find((l) => l.id === listId)
     setBoard((b) => {
       if (!b) return b
       return { ...b, lists: b.lists.filter((l) => l.id !== listId) }
     })
     await deleteList(workspace.id, listId)
     broadcast({ kind: 'list.deleted', listId })
+    logAndAnnounce('list.deleted', { listId, title: list?.title })
+  }
+
+  /**
+   * Convenience: write an activity row (fire-and-forget) AND broadcast an
+   * `activity.added` patch so anyone with the activity panel open refreshes.
+   * Kept inline here so each mutation site is a single call.
+   */
+  function logAndAnnounce(
+    kind: import('../types').ActivityKind,
+    payload: Record<string, unknown>,
+    cardId?: string,
+  ) {
+    if (!board) return
+    logActivity(workspace.id, board.id, kind, payload, cardId).catch(() => {})
+    broadcast({ kind: 'activity.added' })
+    if (showActivity) refetchActivity().catch(() => {})
   }
 
   function updateCardLocal(cardId: string, listId: string, patch: Partial<Card>) {
@@ -340,6 +433,15 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     })
     await updateCard(workspace.id, cardId, patch)
     broadcast({ kind: 'card.updated', cardId })
+    const card = board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)
+    logAndAnnounce(
+      'card.updated',
+      {
+        title: card?.title,
+        changed: Object.keys(patch),
+      },
+      cardId,
+    )
   }
 
   async function handleLabelsChange(cardId: string, listId: string, labels: Label[]) {
@@ -381,9 +483,63 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     if (exists) await removeAssignee(workspace.id, cardId, member.userId)
     else await addAssignee(workspace.id, cardId, member.userId)
     broadcast({ kind: 'card.assignees-changed', cardId })
+    logAndAnnounce(
+      exists ? 'card.unassigned' : 'card.assigned',
+      { cardTitle: card.title, member: member.displayName },
+      cardId,
+    )
+  }
+
+  async function handlePostComment(cardId: string, body: string) {
+    if (!board) return
+    const result = await addComment(workspace.id, board.id, cardId, body, members)
+    setOpenCardComments((prev) => [...prev, result.comment])
+    // Bump local comment-count chip on the card preview.
+    setBoard((b) => {
+      if (!b) return b
+      return {
+        ...b,
+        lists: b.lists.map((l) => ({
+          ...l,
+          cards: l.cards.map((c) =>
+            c.id === cardId ? { ...c, commentCount: c.commentCount + 1 } : c,
+          ),
+        })),
+      }
+    })
+    broadcast({ kind: 'card.comment-added', cardId })
+    const card = board.lists.flatMap((l) => l.cards).find((c) => c.id === cardId)
+    logAndAnnounce(
+      'comment.added',
+      {
+        cardTitle: card?.title,
+        snippet: body.length > 80 ? body.slice(0, 80) + '…' : body,
+        mentioned: result.mentionedUserIds.length,
+      },
+      cardId,
+    )
+  }
+
+  async function handleDeleteComment(cardId: string, commentId: string) {
+    setOpenCardComments((prev) => prev.filter((c) => c.id !== commentId))
+    setBoard((b) => {
+      if (!b) return b
+      return {
+        ...b,
+        lists: b.lists.map((l) => ({
+          ...l,
+          cards: l.cards.map((c) =>
+            c.id === cardId ? { ...c, commentCount: Math.max(0, c.commentCount - 1) } : c,
+          ),
+        })),
+      }
+    })
+    await deleteComment(workspace.id, commentId)
+    broadcast({ kind: 'card.comment-deleted', cardId })
   }
 
   async function handleDeleteCard(cardId: string, listId: string) {
+    const card = board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)
     setBoard((b) => {
       if (!b) return b
       return {
@@ -396,6 +552,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     setOpenCard(null)
     await deleteCard(workspace.id, cardId)
     broadcast({ kind: 'card.deleted', cardId, listId })
+    logAndAnnounce('card.deleted', { title: card?.title }, cardId)
   }
 
   const open = openCard
@@ -432,7 +589,34 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
             </button>
           )
         }
-        right={<PresenceBar peers={peers} selfId={user.id} />}
+        right={
+          <div className="flex items-center gap-2">
+            <PresenceBar peers={peers} selfId={user.id} />
+            <button
+              onClick={() => setShowActivity((v) => !v)}
+              className={`rounded-full border px-3 py-1 text-xs ${
+                showActivity
+                  ? 'border-[var(--accent)] text-[var(--ink)]'
+                  : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+              }`}
+              title="Activity"
+              aria-pressed={showActivity}
+            >
+              Activity
+            </button>
+            <MentionsBell
+              workspaceId={workspace.id}
+              onOpenCard={(cardId, targetBoardId) => {
+                if (targetBoardId !== boardId) {
+                  location.hash = `#/w/${workspace.id}/board/${targetBoardId}`
+                  return
+                }
+                const target = board?.lists.find((l) => l.cards.some((c) => c.id === cardId))
+                if (target) setOpenCard({ cardId, listId: target.id })
+              }}
+            />
+          </div>
+        }
       />
 
       <DndContext
@@ -502,6 +686,8 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
         <CardModal
           card={open}
           members={members}
+          comments={openCardComments}
+          selfUserId={user.id}
           onClose={() => setOpenCard(null)}
           onSaveBasics={(patch) => handleSaveBasics(open.id, openCard.listId, patch)}
           onLabelsChange={(labels) => handleLabelsChange(open.id, openCard.listId, labels)}
@@ -509,9 +695,25 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
             handleChecklistChange(open.id, openCard.listId, items)
           }
           onAssigneeToggle={(member) => handleAssigneeToggle(open.id, openCard.listId, member)}
+          onPostComment={(body) => handlePostComment(open.id, body)}
+          onDeleteComment={(commentId) => handleDeleteComment(open.id, commentId)}
           onDelete={() => handleDeleteCard(open.id, openCard.listId)}
         />
       ) : null}
+
+      {showActivity && (
+        <ActivityPanel
+          entries={activity}
+          onClose={() => setShowActivity(false)}
+          onOpenCard={(cardId) => {
+            const target = board.lists.find((l) => l.cards.some((c) => c.id === cardId))
+            if (target) {
+              setOpenCard({ cardId, listId: target.id })
+              setShowActivity(false)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

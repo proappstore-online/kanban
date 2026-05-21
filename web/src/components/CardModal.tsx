@@ -1,27 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Card, ChecklistItem, Label, LabelColor, Member } from '../types'
+import type { Card, ChecklistItem, Comment, Label, LabelColor, Member } from '../types'
 import { LABEL_PRESETS } from '../types'
 import { MemberPicker } from './MemberPicker'
+import { CommentsSection } from './CommentsSection'
 
 interface CardModalProps {
   card: Card
   members: Member[]
+  comments: Comment[]
+  selfUserId: string
   onClose: () => void
   onSaveBasics: (patch: { title?: string; description?: string | null; dueAt?: number | null }) => void
   onLabelsChange: (labels: Label[]) => void
   onChecklistChange: (items: ChecklistItem[]) => void
   onAssigneeToggle: (member: Member) => void
+  onPostComment: (body: string) => Promise<void> | void
+  onDeleteComment: (commentId: string) => Promise<void> | void
   onDelete: () => void
 }
 
 export function CardModal({
   card,
   members,
+  comments,
+  selfUserId,
   onClose,
   onSaveBasics,
   onLabelsChange,
   onChecklistChange,
   onAssigneeToggle,
+  onPostComment,
+  onDeleteComment,
   onDelete,
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title)
@@ -265,6 +274,20 @@ export function CardModal({
           placeholder="Add a more detailed description…"
           rows={5}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
+        />
+
+        <SectionLabel>
+          Comments
+          {comments.length > 0 && (
+            <span className="ml-2 text-[var(--muted)]">{comments.length}</span>
+          )}
+        </SectionLabel>
+        <CommentsSection
+          comments={comments}
+          members={members}
+          selfUserId={selfUserId}
+          onPost={onPostComment}
+          onDelete={onDeleteComment}
         />
 
         <div className="mt-6 flex items-center justify-between gap-2">

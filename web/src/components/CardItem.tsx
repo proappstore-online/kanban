@@ -48,7 +48,10 @@ export function CardItem({ card, onClick }: CardItemProps) {
         <div className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{card.description}</div>
       ) : null}
 
-      {(card.dueAt !== undefined || checklist.length > 0 || card.assignees.length > 0) && (
+      {(card.dueAt !== undefined ||
+        checklist.length > 0 ||
+        card.commentCount > 0 ||
+        card.assignees.length > 0) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {card.dueAt !== undefined && <DueChip dueAt={card.dueAt} />}
           {checklist.length > 0 && (
@@ -64,9 +67,16 @@ export function CardItem({ card, onClick }: CardItemProps) {
               {checkedCount}/{checklist.length}
             </span>
           )}
-          {card.assignees.length > 0 && (
-            <AssigneeStack assignees={card.assignees} />
+          {card.commentCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted)]"
+              title={`${card.commentCount} comment${card.commentCount === 1 ? '' : 's'}`}
+            >
+              <span aria-hidden>💬</span>
+              {card.commentCount}
+            </span>
           )}
+          {card.assignees.length > 0 && <AssigneeStack assignees={card.assignees} />}
         </div>
       )}
     </div>

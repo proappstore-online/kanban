@@ -19,10 +19,13 @@ export type BoardPatch =
   | { kind: 'card.assignees-changed'; cardId: string }
   | { kind: 'card.checklist-changed'; cardId: string }
   | { kind: 'card.labels-changed'; cardId: string }
+  | { kind: 'card.comment-added'; cardId: string }
+  | { kind: 'card.comment-deleted'; cardId: string }
   | { kind: 'list.created'; listId: string }
   | { kind: 'list.renamed'; listId: string; title: string }
   | { kind: 'list.deleted'; listId: string }
   | { kind: 'board.renamed'; name: string }
+  | { kind: 'activity.added' }
 
 const ROOM_PREFIX = 'board:'
 

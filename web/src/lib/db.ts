@@ -1,16 +1,20 @@
 import { app } from './app'
 import type {
+  ActivityEntry,
+  ActivityKind,
   Assignee,
   Board,
   BoardSummary,
   BoardWithLists,
   Card,
   ChecklistItem,
+  Comment,
   Invite,
   Label,
   LabelColor,
   List,
   Member,
+  Mention,
   Role,
   Workspace,
   WorkspaceWithRole,
@@ -147,6 +151,36 @@ const MIGRATIONS = [
         created_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_activity_board ON activity(tenant_id, board_id, created_at DESC);
+    `,
+  },
+  {
+    name: '0002_comments_mentions',
+    sql: `
+      CREATE TABLE IF NOT EXISTS comments (
+        id         TEXT PRIMARY KEY,
+        tenant_id  TEXT NOT NULL,
+        card_id    TEXT NOT NULL,
+        author_id  TEXT NOT NULL,
+        body       TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER,
+        deleted_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(tenant_id, card_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS mentions (
+        id                TEXT PRIMARY KEY,
+        tenant_id         TEXT NOT NULL,
+        comment_id        TEXT NOT NULL,
+        card_id           TEXT NOT NULL,
+        board_id          TEXT NOT NULL,
+        mentioned_user_id TEXT NOT NULL,
+        actor_id          TEXT NOT NULL,
+        read_at           INTEGER,
+        created_at        INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_mentions_user ON mentions(tenant_id, mentioned_user_id, read_at, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_mentions_comment ON mentions(comment_id);
     `,
   },
 ]
@@ -541,47 +575,56 @@ export async function getBoardFull(
   boardId: string,
 ): Promise<BoardWithLists | null> {
   await ensureMigrated()
-  const [boardQ, listsQ, cardsQ, labelsQ, cardLabelsQ, assigneesQ, checklistQ] = await Promise.all([
-    app.db.query<BoardRow>(
-      `SELECT * FROM boards WHERE id = ? AND tenant_id = ? LIMIT 1`,
-      [boardId, tenantId],
-    ),
-    app.db.query<ListRow>(
-      `SELECT * FROM lists WHERE board_id = ? AND tenant_id = ? AND archived = 0 ORDER BY position`,
-      [boardId, tenantId],
-    ),
-    app.db.query<CardRow>(
-      `SELECT * FROM cards WHERE board_id = ? AND tenant_id = ? AND archived = 0 ORDER BY list_id, position`,
-      [boardId, tenantId],
-    ),
-    app.db.query<LabelRow>(
-      `SELECT * FROM labels WHERE board_id = ? AND tenant_id = ?`,
-      [boardId, tenantId],
-    ),
-    app.db.query<{ card_id: string; label_id: string }>(
-      `SELECT cl.card_id, cl.label_id
-         FROM card_labels cl
-         JOIN cards c ON c.id = cl.card_id
-        WHERE c.board_id = ? AND c.tenant_id = ?`,
-      [boardId, tenantId],
-    ),
-    app.db.query<AssigneeRow>(
-      `SELECT ca.card_id, ca.user_id, m.display_name, m.avatar_url
-         FROM card_assignees ca
-         JOIN cards   c ON c.id = ca.card_id
-         JOIN members m ON m.tenant_id = ca.tenant_id AND m.user_id = ca.user_id
-        WHERE c.board_id = ? AND c.tenant_id = ?`,
-      [boardId, tenantId],
-    ),
-    app.db.query<ChecklistRow>(
-      `SELECT ci.*
-         FROM checklist_items ci
-         JOIN cards c ON c.id = ci.card_id
-        WHERE c.board_id = ? AND c.tenant_id = ?
-     ORDER BY ci.position`,
-      [boardId, tenantId],
-    ),
-  ])
+  const [boardQ, listsQ, cardsQ, labelsQ, cardLabelsQ, assigneesQ, checklistQ, commentCountQ] =
+    await Promise.all([
+      app.db.query<BoardRow>(
+        `SELECT * FROM boards WHERE id = ? AND tenant_id = ? LIMIT 1`,
+        [boardId, tenantId],
+      ),
+      app.db.query<ListRow>(
+        `SELECT * FROM lists WHERE board_id = ? AND tenant_id = ? AND archived = 0 ORDER BY position`,
+        [boardId, tenantId],
+      ),
+      app.db.query<CardRow>(
+        `SELECT * FROM cards WHERE board_id = ? AND tenant_id = ? AND archived = 0 ORDER BY list_id, position`,
+        [boardId, tenantId],
+      ),
+      app.db.query<LabelRow>(
+        `SELECT * FROM labels WHERE board_id = ? AND tenant_id = ?`,
+        [boardId, tenantId],
+      ),
+      app.db.query<{ card_id: string; label_id: string }>(
+        `SELECT cl.card_id, cl.label_id
+           FROM card_labels cl
+           JOIN cards c ON c.id = cl.card_id
+          WHERE c.board_id = ? AND c.tenant_id = ?`,
+        [boardId, tenantId],
+      ),
+      app.db.query<AssigneeRow>(
+        `SELECT ca.card_id, ca.user_id, m.display_name, m.avatar_url
+           FROM card_assignees ca
+           JOIN cards   c ON c.id = ca.card_id
+           JOIN members m ON m.tenant_id = ca.tenant_id AND m.user_id = ca.user_id
+          WHERE c.board_id = ? AND c.tenant_id = ?`,
+        [boardId, tenantId],
+      ),
+      app.db.query<ChecklistRow>(
+        `SELECT ci.*
+           FROM checklist_items ci
+           JOIN cards c ON c.id = ci.card_id
+          WHERE c.board_id = ? AND c.tenant_id = ?
+       ORDER BY ci.position`,
+        [boardId, tenantId],
+      ),
+      app.db.query<{ card_id: string; n: number }>(
+        `SELECT c.card_id, COUNT(*) AS n
+           FROM comments c
+           JOIN cards cards ON cards.id = c.card_id
+          WHERE c.tenant_id = ? AND cards.board_id = ? AND c.deleted_at IS NULL
+          GROUP BY c.card_id`,
+        [tenantId, boardId],
+      ),
+    ])
 
   const boardRow = boardQ.rows[0]
   if (!boardRow) return null
@@ -616,6 +659,10 @@ export async function getBoardFull(
     checklistByCard.set(c.card_id, arr)
   }
 
+  const commentCountByCard = new Map<string, number>(
+    commentCountQ.rows.map((r) => [r.card_id, Number(r.n)]),
+  )
+
   const lists: List[] = listsQ.rows.map((lr) => ({
     id: lr.id,
     boardId: lr.board_id,
@@ -639,6 +686,7 @@ export async function getBoardFull(
       labels: labelsByCard.get(cr.id) ?? [],
       checklist: checklistByCard.get(cr.id) ?? [],
       assignees: assigneesByCard.get(cr.id) ?? [],
+      commentCount: commentCountByCard.get(cr.id) ?? 0,
       createdBy: cr.created_by,
       createdAt: cr.created_at,
       updatedAt: cr.updated_at,
@@ -723,6 +771,7 @@ export async function createCard(
     labels: [],
     checklist: [],
     assignees: [],
+    commentCount: 0,
     createdBy: me.id,
     createdAt: now,
     updatedAt: now,
@@ -880,6 +929,339 @@ export async function setChecklist(
       [item.id, tenantId, cardId, item.text, item.done ? 1 : 0, item.position, Date.now()],
     )
   }
+}
+
+// Comments -------------------------------------------------------------------
+
+interface CommentRow {
+  id: string
+  tenant_id: string
+  card_id: string
+  author_id: string
+  author_display_name: string
+  author_avatar_url: string | null
+  body: string
+  created_at: number
+  updated_at: number | null
+  deleted_at: number | null
+}
+
+function rowToComment(r: CommentRow): Comment {
+  return {
+    id: r.id,
+    cardId: r.card_id,
+    authorId: r.author_id,
+    authorDisplayName: r.author_display_name,
+    authorAvatarUrl: r.author_avatar_url ?? undefined,
+    body: r.body,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at ?? undefined,
+    deletedAt: r.deleted_at ?? undefined,
+  }
+}
+
+const COMMENT_SELECT = `
+  SELECT c.id, c.tenant_id, c.card_id, c.author_id, c.body, c.created_at, c.updated_at, c.deleted_at,
+         m.display_name AS author_display_name, m.avatar_url AS author_avatar_url
+    FROM comments c
+    LEFT JOIN members m ON m.tenant_id = c.tenant_id AND m.user_id = c.author_id
+`
+
+export async function listComments(tenantId: string, cardId: string): Promise<Comment[]> {
+  await ensureMigrated()
+  const { rows } = await app.db.query<CommentRow>(
+    `${COMMENT_SELECT}
+     WHERE c.tenant_id = ? AND c.card_id = ? AND c.deleted_at IS NULL
+     ORDER BY c.created_at ASC`,
+    [tenantId, cardId],
+  )
+  return rows.map(rowToComment)
+}
+
+/**
+ * Map of card_id -> comment count for an entire board. Used to render the
+ * comment-count chip on the card preview without round-tripping per card.
+ */
+export async function listCommentCountsByCard(
+  tenantId: string,
+  boardId: string,
+): Promise<Map<string, number>> {
+  await ensureMigrated()
+  const { rows } = await app.db.query<{ card_id: string; n: number }>(
+    `SELECT c.card_id, COUNT(*) AS n
+       FROM comments c
+       JOIN cards cards ON cards.id = c.card_id
+      WHERE c.tenant_id = ? AND cards.board_id = ? AND c.deleted_at IS NULL
+      GROUP BY c.card_id`,
+    [tenantId, boardId],
+  )
+  return new Map(rows.map((r) => [r.card_id, Number(r.n)]))
+}
+
+/**
+ * Add a comment, extract @mentions against the workspace member list, and
+ * insert one mention row per mentioned user (skipping self). Returns the
+ * newly-created Comment plus the mentioned userIds for caller side effects.
+ */
+export async function addComment(
+  tenantId: string,
+  boardId: string,
+  cardId: string,
+  body: string,
+  members: Pick<Member, 'userId' | 'displayName'>[],
+): Promise<{ comment: Comment; mentionedUserIds: string[] }> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('Comment cannot be empty.')
+
+  const id = rid()
+  const now = Date.now()
+  await app.db.execute(
+    `INSERT INTO comments (id, tenant_id, card_id, author_id, body, created_at)
+     VALUES (?,?,?,?,?,?)`,
+    [id, tenantId, cardId, me.id, trimmed, now],
+  )
+
+  const mentioned = parseMentions(trimmed, members).filter((uid) => uid !== me.id)
+  for (const uid of mentioned) {
+    await app.db.execute(
+      `INSERT INTO mentions
+         (id, tenant_id, comment_id, card_id, board_id, mentioned_user_id, actor_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [rid(), tenantId, id, cardId, boardId, uid, me.id, now],
+    )
+  }
+
+  return {
+    comment: {
+      id,
+      cardId,
+      authorId: me.id,
+      authorDisplayName: me.login,
+      authorAvatarUrl: me.avatarUrl ?? undefined,
+      body: trimmed,
+      createdAt: now,
+    },
+    mentionedUserIds: mentioned,
+  }
+}
+
+export async function deleteComment(tenantId: string, commentId: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  // Soft delete — keeps activity-feed audit trail intact. Authors only
+  // (verified by the WHERE clause so users can't tamper with others').
+  await app.db.execute(
+    `UPDATE comments SET deleted_at = ? WHERE id = ? AND tenant_id = ? AND author_id = ?`,
+    [Date.now(), commentId, tenantId, me.id],
+  )
+  // Also clear mention rows for this comment so the bell doesn't show
+  // stale references to a deleted comment.
+  await app.db.execute(`DELETE FROM mentions WHERE comment_id = ?`, [commentId])
+}
+
+/**
+ * Extract @login tokens from a comment body and resolve them against the
+ * member list. Returns the matched member userIds (deduped). Match is
+ * case-insensitive against `displayName` (which is the GitHub login for
+ * members created via OAuth).
+ */
+export function parseMentions(
+  body: string,
+  members: Pick<Member, 'userId' | 'displayName'>[],
+): string[] {
+  const byLogin = new Map(members.map((m) => [m.displayName.toLowerCase(), m.userId]))
+  const seen = new Set<string>()
+  // `@` followed by a GitHub-shaped login (letters/digits/hyphens, up to 39).
+  const re = /(?:^|[^A-Za-z0-9_])@([A-Za-z0-9-]{1,39})/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(body)) !== null) {
+    const uid = byLogin.get(match[1].toLowerCase())
+    if (uid) seen.add(uid)
+  }
+  return [...seen]
+}
+
+// Mentions -------------------------------------------------------------------
+
+interface MentionRow {
+  id: string
+  tenant_id: string
+  comment_id: string
+  card_id: string
+  board_id: string
+  mentioned_user_id: string
+  actor_id: string
+  read_at: number | null
+  created_at: number
+  // Joined columns:
+  actor_display_name: string | null
+  actor_avatar_url: string | null
+  comment_body: string | null
+  card_title: string | null
+}
+
+function rowToMention(r: MentionRow): Mention {
+  return {
+    id: r.id,
+    commentId: r.comment_id,
+    cardId: r.card_id,
+    boardId: r.board_id,
+    mentionedUserId: r.mentioned_user_id,
+    actorId: r.actor_id,
+    actorDisplayName: r.actor_display_name ?? '(former member)',
+    actorAvatarUrl: r.actor_avatar_url ?? undefined,
+    commentBody: r.comment_body ?? '(deleted comment)',
+    cardTitle: r.card_title ?? '(deleted card)',
+    readAt: r.read_at ?? undefined,
+    createdAt: r.created_at,
+  }
+}
+
+/**
+ * List the current user's @mentions in the given workspace, newest first.
+ * Joined to comments/cards/members to render the inbox row inline without
+ * per-row roundtrips. Limit kept small — this is the bell dropdown, not a
+ * page.
+ */
+export async function listMyMentions(tenantId: string, limit = 25): Promise<Mention[]> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) return []
+  const { rows } = await app.db.query<MentionRow>(
+    `SELECT m.*,
+            actor.display_name AS actor_display_name,
+            actor.avatar_url   AS actor_avatar_url,
+            c.body             AS comment_body,
+            cards.title        AS card_title
+       FROM mentions m
+       LEFT JOIN members actor ON actor.tenant_id = m.tenant_id AND actor.user_id = m.actor_id
+       LEFT JOIN comments c    ON c.id = m.comment_id AND c.deleted_at IS NULL
+       LEFT JOIN cards         ON cards.id = m.card_id
+      WHERE m.tenant_id = ? AND m.mentioned_user_id = ?
+      ORDER BY m.created_at DESC
+      LIMIT ?`,
+    [tenantId, me.id, limit],
+  )
+  return rows.map(rowToMention)
+}
+
+export async function countUnreadMentions(tenantId: string): Promise<number> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) return 0
+  const { rows } = await app.db.query<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM mentions
+      WHERE tenant_id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
+    [tenantId, me.id],
+  )
+  return Number(rows[0]?.n ?? 0)
+}
+
+export async function markMentionRead(tenantId: string, mentionId: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) return
+  await app.db.execute(
+    `UPDATE mentions SET read_at = ?
+      WHERE id = ? AND tenant_id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
+    [Date.now(), mentionId, tenantId, me.id],
+  )
+}
+
+export async function markAllMentionsRead(tenantId: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) return
+  await app.db.execute(
+    `UPDATE mentions SET read_at = ?
+      WHERE tenant_id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
+    [Date.now(), tenantId, me.id],
+  )
+}
+
+// Activity feed --------------------------------------------------------------
+
+interface ActivityRow {
+  id: string
+  tenant_id: string
+  board_id: string
+  card_id: string | null
+  actor_id: string
+  kind: string
+  payload: string | null
+  created_at: number
+  // Joined:
+  actor_display_name: string | null
+  actor_avatar_url: string | null
+}
+
+function rowToActivity(r: ActivityRow): ActivityEntry {
+  let payload: Record<string, unknown> = {}
+  if (r.payload) {
+    try {
+      payload = JSON.parse(r.payload) as Record<string, unknown>
+    } catch {
+      payload = {}
+    }
+  }
+  return {
+    id: r.id,
+    boardId: r.board_id,
+    cardId: r.card_id ?? undefined,
+    actorId: r.actor_id,
+    actorDisplayName: r.actor_display_name ?? '(former member)',
+    actorAvatarUrl: r.actor_avatar_url ?? undefined,
+    kind: r.kind as ActivityKind,
+    payload,
+    createdAt: r.created_at,
+  }
+}
+
+/**
+ * Write an activity row. Fire-and-forget — activity is observability, not
+ * a hard invariant; if it fails the parent mutation still succeeded.
+ */
+export async function logActivity(
+  tenantId: string,
+  boardId: string,
+  kind: ActivityKind,
+  payload: Record<string, unknown> = {},
+  cardId?: string,
+): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) return
+  try {
+    await app.db.execute(
+      `INSERT INTO activity (id, tenant_id, board_id, card_id, actor_id, kind, payload, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [rid(), tenantId, boardId, cardId ?? null, me.id, kind, JSON.stringify(payload), Date.now()],
+    )
+  } catch {
+    /* swallow */
+  }
+}
+
+export async function listBoardActivity(
+  tenantId: string,
+  boardId: string,
+  limit = 50,
+): Promise<ActivityEntry[]> {
+  await ensureMigrated()
+  const { rows } = await app.db.query<ActivityRow>(
+    `SELECT a.*, m.display_name AS actor_display_name, m.avatar_url AS actor_avatar_url
+       FROM activity a
+       LEFT JOIN members m ON m.tenant_id = a.tenant_id AND m.user_id = a.actor_id
+      WHERE a.tenant_id = ? AND a.board_id = ?
+      ORDER BY a.created_at DESC
+      LIMIT ?`,
+    [tenantId, boardId, limit],
+  )
+  return rows.map(rowToActivity)
 }
 
 // Internal helpers ------------------------------------------------------------
