@@ -93,6 +93,78 @@ export async function updateCard(
   )
 }
 
+export interface ArchivedCardSummary {
+  id: string
+  title: string
+  listId: string
+  listTitle: string
+  archivedAt: number
+}
+
+/**
+ * List archived cards on a board, joined with their parent list's title
+ * for display ("Archived: Spec out v2 (was in In progress)"). Ordered
+ * most-recently-archived first; `updated_at` doubles as the archive
+ * timestamp because the only thing that flips `archived` also bumps it.
+ */
+export async function listArchivedCards(
+  tenantId: string,
+  boardId: string,
+): Promise<ArchivedCardSummary[]> {
+  await ensureMigrated()
+  const { rows } = await app.db.query<{
+    id: string
+    title: string
+    list_id: string
+    list_title: string
+    updated_at: number
+  }>(
+    `SELECT c.id, c.title, c.list_id, l.title AS list_title, c.updated_at
+       FROM cards c
+       LEFT JOIN lists l ON l.id = c.list_id
+      WHERE c.tenant_id = ? AND c.board_id = ? AND c.archived = 1
+      ORDER BY c.updated_at DESC`,
+    [tenantId, boardId],
+  )
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    listId: r.list_id,
+    listTitle: r.list_title ?? '(deleted list)',
+    archivedAt: r.updated_at,
+  }))
+}
+
+/**
+ * Soft-archive a card. The row stays in D1 (along with its comments,
+ * mentions, labels, assignees, checklist) — `getBoardFull` already
+ * filters on `archived = 0` so archived cards drop out of the live
+ * board automatically. Reversible via `unarchiveCard`.
+ */
+export async function archiveCard(tenantId: string, cardId: string): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE cards SET archived = 1, updated_at = ?, version = version + 1
+      WHERE id = ? AND tenant_id = ?`,
+    [Date.now(), cardId, tenantId],
+  )
+}
+
+export async function unarchiveCard(tenantId: string, cardId: string): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE cards SET archived = 0, updated_at = ?, version = version + 1
+      WHERE id = ? AND tenant_id = ?`,
+    [Date.now(), cardId, tenantId],
+  )
+}
+
+/**
+ * Hard-delete a card and every child row (comments, mentions, labels,
+ * assignees, checklist). Use sparingly — archive is the usual move so the
+ * activity trail and audit context survive. The CardModal exposes both
+ * with different visual weights.
+ */
 export async function deleteCard(tenantId: string, cardId: string): Promise<void> {
   await ensureMigrated()
   await app.db.execute(`DELETE FROM mentions        WHERE card_id = ?`, [cardId])

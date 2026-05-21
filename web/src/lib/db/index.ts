@@ -50,6 +50,9 @@ export {
   createCard,
   updateCard,
   deleteCard,
+  archiveCard,
+  unarchiveCard,
+  listArchivedCards,
   moveCard,
   addAssignee,
   removeAssignee,
@@ -58,7 +61,7 @@ export {
   setCardLabels,
   setChecklist,
 } from './cards'
-export type { CardPatch } from './cards'
+export type { CardPatch, ArchivedCardSummary } from './cards'
 
 export {
   listComments,

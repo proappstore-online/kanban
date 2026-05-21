@@ -180,6 +180,8 @@ export type ActivityKind =
   | 'card.moved'
   | 'card.updated'
   | 'card.deleted'
+  | 'card.archived'
+  | 'card.restored'
   | 'card.assigned'
   | 'card.unassigned'
   | 'comment.added'

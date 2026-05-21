@@ -28,6 +28,9 @@ interface CardModalProps {
   onAssigneeToggle: (member: Member) => void
   onPostComment: (body: string) => Promise<void> | void
   onDeleteComment: (commentId: string) => Promise<void> | void
+  /** Soft-archive: card disappears from the live board but stays in D1. */
+  onArchive: () => void
+  /** Hard-delete: row + children removed. Intended as the secondary action. */
   onDelete: () => void
 }
 
@@ -44,6 +47,7 @@ export function CardModal({
   onAssigneeToggle,
   onPostComment,
   onDeleteComment,
+  onArchive,
   onDelete,
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title)
@@ -326,15 +330,34 @@ export function CardModal({
           onDelete={onDeleteComment}
         />
 
-        <div className="mt-6 flex items-center justify-between gap-2">
-          <button
-            onClick={() => {
-              if (confirm('Delete this card?')) onDelete()
-            }}
-            className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
-          >
-            Delete card
-          </button>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                close()
+                onArchive()
+              }}
+              className="rounded-full border border-[var(--line-strong)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+              title="Move to Archived — reversible, keeps history"
+            >
+              Archive
+            </button>
+            <button
+              onClick={() => {
+                if (
+                  confirm(
+                    'Permanently delete this card? Comments, mentions, and history are also removed. This cannot be undone — Archive is reversible.',
+                  )
+                ) {
+                  onDelete()
+                }
+              }}
+              className="rounded-full px-3 py-1.5 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+              title="Hard delete — comments + history removed"
+            >
+              Delete forever
+            </button>
+          </div>
           <button
             onClick={close}
             className="rounded-full bg-[var(--ink)] px-4 py-1.5 text-xs font-semibold text-[var(--paper)]"

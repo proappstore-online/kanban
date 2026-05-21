@@ -22,14 +22,26 @@ import type { WorkspaceWithRole } from './types'
 type Route =
   | { name: 'workspaces' }
   | { name: 'boards'; workspaceRef: string }
-  | { name: 'board'; workspaceRef: string; boardId: string }
+  | { name: 'board'; workspaceRef: string; boardId: string; cardId?: string }
   | { name: 'settings'; workspaceRef: string }
   | { name: 'my-tasks'; workspaceRef: string }
   | { name: 'invite'; code: string }
 
 function parseHash(): Route {
   const h = location.hash
-  let m = h.match(/^#\/w\/([^/]+)\/board\/([\w-]+)$/)
+  // `/card/<id>` is an optional suffix on the board route. Captured here so
+  // the Board page can open the corresponding modal on load; combined with
+  // the slug-based URL rewriter further down this makes any view of any
+  // card paste-shareable.
+  let m = h.match(/^#\/w\/([^/]+)\/board\/([\w-]+)\/card\/([\w-]+)$/)
+  if (m)
+    return {
+      name: 'board',
+      workspaceRef: decodeURIComponent(m[1]),
+      boardId: m[2],
+      cardId: m[3],
+    }
+  m = h.match(/^#\/w\/([^/]+)\/board\/([\w-]+)$/)
   if (m) return { name: 'board', workspaceRef: decodeURIComponent(m[1]), boardId: m[2] }
   m = h.match(/^#\/w\/([^/]+)\/settings$/)
   if (m) return { name: 'settings', workspaceRef: decodeURIComponent(m[1]) }
@@ -214,6 +226,7 @@ export default function App() {
     return (
       <Board
         boardId={route.boardId}
+        initialCardId={route.cardId}
         user={user}
         workspace={ws}
         onBack={() => (location.hash = `#/w/${ws.slug}`)}

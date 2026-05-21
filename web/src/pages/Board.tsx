@@ -14,12 +14,14 @@ import type {
 import {
   addAssignee,
   addComment,
+  archiveCard,
   createCard,
   createList,
   deleteCard,
   deleteComment,
   deleteList,
   ensureBoardLabels,
+  listArchivedCards,
   logActivity,
   moveCard,
   removeAssignee,
@@ -28,13 +30,16 @@ import {
   renameList,
   setCardLabels,
   setChecklist,
+  unarchiveCard,
   updateCard,
 } from '../lib/db'
+import type { ArchivedCardSummary } from '../lib/db'
 import { TopBar } from '../components/TopBar'
 import { ListColumn } from '../components/ListColumn'
 import { CardModal } from '../components/CardModal'
 import { PresenceBar } from '../components/PresenceBar'
 import { ActivityPanel } from '../components/ActivityPanel'
+import { ArchivedPanel } from '../components/ArchivedPanel'
 import { MentionsBell } from '../components/MentionsBell'
 import {
   BoardFilters,
@@ -50,9 +55,12 @@ interface BoardProps {
   user: User
   workspace: WorkspaceWithRole
   onBack: () => void
+  /** Open this card's modal as soon as the board's loaded. From the
+   *  /card/<id> URL segment. */
+  initialCardId?: string
 }
 
-export function Board({ boardId, user, workspace, onBack }: BoardProps) {
+export function Board({ boardId, user, workspace, onBack, initialCardId }: BoardProps) {
   // Local UI state — anything else lives in the data hook.
   const [openCard, setOpenCard] = useState<{ cardId: string; listId: string } | null>(null)
   const [addingList, setAddingList] = useState(false)
@@ -60,6 +68,8 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
   const [renamingBoard, setRenamingBoard] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [filter, setFilter] = useState<BoardFilter>(EMPTY_FILTER)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedCards, setArchivedCards] = useState<ArchivedCardSummary[] | null>(null)
 
   // Reset per-board UI state when navigating between boards. Without this,
   // a filter set on board A stays applied when you open board B in the
@@ -70,7 +80,25 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     setOpenCard(null)
     setAddingList(false)
     setRenamingBoard(false)
+    setShowArchived(false)
+    setArchivedCards(null)
   }, [boardId])
+
+  // Fetch the archived-cards list when the panel opens. Cached on the
+  // page so re-opening doesn't roundtrip if nothing's changed in between;
+  // bust the cache after restore / delete-forever.
+  async function refetchArchived() {
+    try {
+      const list = await listArchivedCards(workspace.id, boardId)
+      setArchivedCards(list)
+    } catch {
+      setArchivedCards([])
+    }
+  }
+  useEffect(() => {
+    if (showArchived && archivedCards === null) refetchArchived()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showArchived])
 
   // Guard against double-click on the status pill firing two concurrent
   // moveCard requests for the same card — second one would race against
@@ -91,6 +119,33 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     broadcast,
     refetch,
   } = useBoardData(workspace.id, boardId, openCard?.cardId ?? null)
+
+  // Deep-link: when the URL carried a card id, open that card's modal as
+  // soon as the board's loaded. We only do this once per `initialCardId`
+  // value so closing the modal locally doesn't snap it open again.
+  const initialCardAppliedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!board || !initialCardId) return
+    if (initialCardAppliedRef.current === initialCardId) return
+    const listWithCard = board.lists.find((l) =>
+      l.cards.some((c) => c.id === initialCardId),
+    )
+    if (!listWithCard) return
+    setOpenCard({ cardId: initialCardId, listId: listWithCard.id })
+    initialCardAppliedRef.current = initialCardId
+  }, [board, initialCardId])
+
+  // Mirror the open-card state into the URL so the address bar always shows
+  // a shareable link. `replaceState` (not pushState) — back-button skips
+  // card opens; matches most kanban tools and avoids polluting history with
+  // every modal toggle.
+  useEffect(() => {
+    const base = `#/w/${workspace.slug}/board/${boardId}`
+    const wanted = openCard ? `${base}/card/${openCard.cardId}` : base
+    if (location.hash !== wanted) {
+      history.replaceState(null, '', `${location.pathname}${location.search}${wanted}`)
+    }
+  }, [openCard, workspace.slug, boardId])
 
   /**
    * Write an activity row (fire-and-forget) and broadcast an
@@ -347,6 +402,37 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     broadcast({ kind: 'card.comment-deleted', cardId })
   }
 
+  /** Soft archive — card drops out of the live board but stays restorable. */
+  async function handleArchiveCard(cardId: string, listId: string) {
+    const card = board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)
+    setBoard((b) => {
+      if (!b) return b
+      return {
+        ...b,
+        lists: b.lists.map((l) =>
+          l.id !== listId ? l : { ...l, cards: l.cards.filter((c) => c.id !== cardId) },
+        ),
+      }
+    })
+    setOpenCard(null)
+    await archiveCard(workspace.id, cardId)
+    // Same patch shape as a delete on the wire — peers drop the card
+    // either way; their next open of the Archived panel will refetch.
+    broadcast({ kind: 'card.deleted', cardId, listId })
+    logAndAnnounce('card.archived', { title: card?.title }, cardId)
+    setArchivedCards(null) // bust cache so the panel refetches on next open
+  }
+
+  /** Restore from the Archived panel. */
+  async function handleRestoreCard(cardId: string) {
+    await unarchiveCard(workspace.id, cardId)
+    broadcast({ kind: 'card.created', cardId, listId: '' })
+    refetch().catch(() => {})
+    refetchArchived().catch(() => {})
+  }
+
+  /** Hard delete — irreversible. Used by CardModal "Delete forever" and
+   * the Archived panel's per-row trash. */
   async function handleDeleteCard(cardId: string, listId: string) {
     const card = board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)
     setBoard((b) => {
@@ -362,6 +448,15 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     await deleteCard(workspace.id, cardId)
     broadcast({ kind: 'card.deleted', cardId, listId })
     logAndAnnounce('card.deleted', { title: card?.title }, cardId)
+    setArchivedCards(null)
+  }
+
+  /** Delete-forever from the Archived panel — same DB op but no
+   * listId is known up-front; the panel passes the card row to refresh. */
+  async function handleDeleteForever(cardId: string) {
+    await deleteCard(workspace.id, cardId)
+    broadcast({ kind: 'card.deleted', cardId, listId: '' })
+    refetchArchived().catch(() => {})
   }
 
   const open = openCard
@@ -477,6 +572,18 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
           <div className="flex items-center gap-2">
             <PresenceBar peers={peers} selfId={user.id} />
             <button
+              onClick={() => setShowArchived((v) => !v)}
+              className={`hidden rounded-full border px-3 py-1 text-xs sm:inline-block ${
+                showArchived
+                  ? 'border-[var(--accent)] text-[var(--ink)]'
+                  : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+              }`}
+              title="Archived cards"
+              aria-pressed={showArchived}
+            >
+              Archived
+            </button>
+            <button
               onClick={() => setShowActivity((v) => !v)}
               className={`rounded-full border px-3 py-1 text-xs ${
                 showActivity
@@ -492,7 +599,9 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
               workspaceId={workspace.id}
               onOpenCard={(cardId, targetBoardId) => {
                 if (targetBoardId !== boardId) {
-                  location.hash = `#/w/${workspace.slug}/board/${targetBoardId}`
+                  // Cross-board mention: navigate to the target board with
+                  // the card-id segment so the modal opens on load there.
+                  location.hash = `#/w/${workspace.slug}/board/${targetBoardId}/card/${cardId}`
                   return
                 }
                 const target = board?.lists.find((l) => l.cards.some((c) => c.id === cardId))
@@ -596,6 +705,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
           onAssigneeToggle={(member) => handleAssigneeToggle(open.id, openCard.listId, member)}
           onPostComment={(body) => handlePostComment(open.id, body)}
           onDeleteComment={(commentId) => handleDeleteComment(open.id, commentId)}
+          onArchive={() => handleArchiveCard(open.id, openCard.listId)}
           onDelete={() => handleDeleteCard(open.id, openCard.listId)}
         />
       ) : null}
@@ -611,6 +721,15 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
               setShowActivity(false)
             }
           }}
+        />
+      )}
+
+      {showArchived && (
+        <ArchivedPanel
+          cards={archivedCards}
+          onClose={() => setShowArchived(false)}
+          onRestore={handleRestoreCard}
+          onDeleteForever={handleDeleteForever}
         />
       )}
     </div>

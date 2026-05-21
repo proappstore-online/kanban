@@ -97,6 +97,10 @@ function summarize(e: ActivityEntry): string {
     }
     case 'card.deleted':
       return `deleted card "${cardTitle}"`
+    case 'card.archived':
+      return `archived "${cardTitle}"`
+    case 'card.restored':
+      return `restored "${cardTitle}" from archive`
     case 'card.assigned':
       return `assigned ${(p.member ?? 'someone') as string} to "${cardTitle}"`
     case 'card.unassigned':
