@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card, ChecklistItem, Comment, Label, LabelColor, Member } from '../types'
 import { LABEL_PRESETS } from '../types'
+import { useEscape } from '../lib/useEscape'
 import { MemberPicker } from './MemberPicker'
 import { CommentsSection } from './CommentsSection'
 
@@ -69,14 +70,7 @@ export function CardModal({
     etaAt: card.etaAt,
   })
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useEscape(close)
 
   function close() {
     const init = initialRef.current
@@ -148,6 +142,7 @@ export function CardModal({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Title"
+          aria-label="Card title"
           className="w-full bg-transparent text-lg font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
         />
 
@@ -277,6 +272,7 @@ export function CardModal({
               }
             }}
             placeholder="Add an item…"
+            aria-label="New checklist item"
             className="flex-1 rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
           />
           <button
@@ -294,6 +290,7 @@ export function CardModal({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Add a more detailed description…"
+          aria-label="Card description"
           rows={4}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
@@ -303,6 +300,7 @@ export function CardModal({
           value={requirement}
           onChange={(e) => setRequirement(e.target.value)}
           placeholder="What needs to be done? What's the user-visible outcome?"
+          aria-label="Card requirement"
           rows={3}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
@@ -312,6 +310,7 @@ export function CardModal({
           value={acceptanceCriteria}
           onChange={(e) => setAcceptanceCriteria(e.target.value)}
           placeholder="How do we know this is done? Bullet the checks."
+          aria-label="Card acceptance criteria"
           rows={3}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
@@ -419,6 +418,7 @@ function LabelNameInput({
         }
       }}
       placeholder={`Name this ${label.color} label`}
+      aria-label={`Rename ${label.color} label`}
       className="rounded-full border border-[var(--line)] px-3 py-1 text-[11px] outline-none focus:border-[var(--line-strong)]"
       style={{ background: s.bg + '40', color: s.fg }}
       maxLength={28}
@@ -479,6 +479,7 @@ function DateField({
             const v = e.target.value
             onChange(v ? new Date(v).getTime() : undefined)
           }}
+          aria-label={`${label} — ${sub}`}
           className="min-w-0 flex-1 bg-transparent text-xs text-[var(--ink)] outline-none"
         />
         {value !== undefined && (

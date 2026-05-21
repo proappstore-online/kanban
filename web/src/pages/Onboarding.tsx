@@ -43,6 +43,7 @@ export function Onboarding({ user, onCreated }: OnboardingProps) {
             if (e.key === 'Enter') handleCreate()
           }}
           placeholder="e.g. Acme Marketing"
+          aria-label="Workspace name"
           className="mt-6 w-full rounded-2xl border border-[var(--line)] bg-[var(--paper-deep)] px-4 py-3 text-center text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
         <button

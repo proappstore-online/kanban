@@ -123,6 +123,7 @@ export function ListColumn({
               }
             }}
             placeholder="Card title"
+            aria-label="New card title"
             rows={2}
             className="resize-none bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
           />

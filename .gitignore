@@ -6,3 +6,6 @@ dist
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# VibeCodeQA report output — scanner-generated artifacts, not source
+.vibe-check/

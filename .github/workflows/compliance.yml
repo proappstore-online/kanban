@@ -1,5 +1,12 @@
 name: Platform Compliance
 
+# The reusable workflow runs the platform's `compliance check` (20 rules)
+# against this repo's tree. It only needs to read the code; no comments,
+# no commits, no releases. Pinned permissions keep the default-write
+# fallback closed.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -8,4 +15,7 @@ on:
 
 jobs:
   ci:
+    # First-party reusable workflow pinned to main — the
+    # proappstore-online/proappstore repo is platform-controlled, so SHA
+    # pinning would just rot. Trust boundary is the platform org itself.
     uses: proappstore-online/proappstore/.github/workflows/app-ci.yml@main

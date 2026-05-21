@@ -30,6 +30,7 @@ export function MemberPicker({ members, selected, onToggle }: MemberPickerProps)
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search members…"
+        aria-label="Search workspace members"
         className="w-full rounded-t-2xl bg-transparent px-3 py-2 text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
       />
       <ul className="max-h-48 overflow-y-auto border-t border-[var(--line)]">

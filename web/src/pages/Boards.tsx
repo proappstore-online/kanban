@@ -265,6 +265,7 @@ function FeatureSection({
                 if (e.key === 'Escape') onCancelCreate()
               }}
               placeholder="Board name"
+              aria-label="New board name"
               className="bg-transparent text-base font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
             />
             <div className="mt-auto flex gap-2">

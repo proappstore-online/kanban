@@ -183,6 +183,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
             <input
               value={workspaceName}
               readOnly={!canManage}
+              aria-label="Workspace name"
               onChange={(e) => setWorkspaceName(e.target.value)}
               onBlur={handleRenameWorkspace}
               onKeyDown={(e) => {
@@ -244,6 +245,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
                       <select
                         value={m.role}
                         onChange={(e) => handleRoleChange(m.id, e.target.value as Role)}
+                        aria-label={`Role for ${m.displayName}`}
                         className="rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-2 py-1 text-xs text-[var(--ink)]"
                       >
                         {ROLES.map((r) => (
@@ -313,6 +315,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
                   <input
                     readOnly
                     value={inviteUrl(iv.code)}
+                    aria-label="Invite link"
                     onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
                     className="min-w-0 flex-1 truncate rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none"
                   />
@@ -354,6 +357,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
                   <input
                     defaultValue={f.name}
                     readOnly={!canManage}
+                    aria-label={`Feature name: ${f.name}`}
                     onBlur={(e) => {
                       const v = e.target.value.trim()
                       if (v && v !== f.name) handleRenameFeature(f.id, v)
@@ -382,6 +386,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
                       if (e.key === 'Enter') handleAddFeature()
                     }}
                     placeholder="New feature name (e.g. Premium apps)"
+                    aria-label="New feature name"
                     className="min-w-0 flex-1 bg-transparent text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
                   />
                   <button

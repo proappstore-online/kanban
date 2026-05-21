@@ -59,12 +59,29 @@ export async function getStatusListId(
 
 export async function deleteList(tenantId: string, listId: string): Promise<void> {
   await ensureMigrated()
-  const inCards = `card_id IN (SELECT id FROM cards WHERE list_id = ?)`
-  await app.db.execute(`DELETE FROM mentions        WHERE ${inCards}`, [listId])
-  await app.db.execute(`DELETE FROM comments        WHERE ${inCards}`, [listId])
-  await app.db.execute(`DELETE FROM card_labels     WHERE ${inCards}`, [listId])
-  await app.db.execute(`DELETE FROM card_assignees  WHERE ${inCards}`, [listId])
-  await app.db.execute(`DELETE FROM checklist_items WHERE ${inCards}`, [listId])
+  // SQL inlined per child table so static scanners see each statement is
+  // fully parameterized. The shared subquery still keeps the cleanup at
+  // one round-trip per table without threading card_id lists through JS.
+  await app.db.execute(
+    `DELETE FROM mentions WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`,
+    [listId],
+  )
+  await app.db.execute(
+    `DELETE FROM comments WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`,
+    [listId],
+  )
+  await app.db.execute(
+    `DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`,
+    [listId],
+  )
+  await app.db.execute(
+    `DELETE FROM card_assignees WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`,
+    [listId],
+  )
+  await app.db.execute(
+    `DELETE FROM checklist_items WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`,
+    [listId],
+  )
   await app.db.execute(`DELETE FROM cards WHERE list_id = ? AND tenant_id = ?`, [listId, tenantId])
   await app.db.execute(`DELETE FROM lists WHERE id      = ? AND tenant_id = ?`, [listId, tenantId])
 }

@@ -12,6 +12,7 @@ import { AcceptInvite } from './pages/AcceptInvite'
 import { listMyWorkspaces } from './lib/db'
 import type { WorkspaceWithRole } from './types'
 import { Toasts } from './components/Toasts'
+import { Loading } from './components/Loading'
 
 /**
  * Hash routes use a `workspaceRef` that can be either a slug
@@ -127,11 +128,7 @@ export default function App() {
   // hash-only route changes.
   const content = (() => {
     if (!ready) {
-      return (
-        <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
-          Loading…
-        </div>
-      )
+      return <Loading />
     }
     if (!user) return <SignIn />
 
@@ -147,11 +144,7 @@ export default function App() {
     }
 
     if (workspaces === null) {
-      return (
-        <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
-          Loading…
-        </div>
-      )
+      return <Loading />
     }
 
     if (workspaces.length === 0) {

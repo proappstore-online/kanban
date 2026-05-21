@@ -112,15 +112,31 @@ export async function renameBoard(
 
 export async function deleteBoard(tenantId: string, boardId: string): Promise<void> {
   await ensureMigrated()
-  // Cascade by hand — D1 doesn't enforce FK cascades. The subqueries scope
+  // Cascade by hand — D1 doesn't enforce FK cascades. Each subquery scopes
   // to `WHERE board_id = ?` rather than threading card_id lists through JS,
-  // so cleanup is one round-trip per child table.
-  const inCards = `card_id IN (SELECT id FROM cards WHERE board_id = ?)`
-  await app.db.execute(`DELETE FROM mentions       WHERE ${inCards}`, [boardId])
-  await app.db.execute(`DELETE FROM comments       WHERE ${inCards}`, [boardId])
-  await app.db.execute(`DELETE FROM card_labels    WHERE ${inCards}`, [boardId])
-  await app.db.execute(`DELETE FROM card_assignees WHERE ${inCards}`, [boardId])
-  await app.db.execute(`DELETE FROM checklist_items WHERE ${inCards}`, [boardId])
+  // so cleanup is one round-trip per child table. SQL inlined per table
+  // (rather than via a shared template-string fragment) so static scanners
+  // can see each statement is fully parameterized.
+  await app.db.execute(
+    `DELETE FROM mentions WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
+    [boardId],
+  )
+  await app.db.execute(
+    `DELETE FROM comments WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
+    [boardId],
+  )
+  await app.db.execute(
+    `DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
+    [boardId],
+  )
+  await app.db.execute(
+    `DELETE FROM card_assignees WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
+    [boardId],
+  )
+  await app.db.execute(
+    `DELETE FROM checklist_items WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
+    [boardId],
+  )
   await app.db.execute(`DELETE FROM cards    WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
   await app.db.execute(`DELETE FROM lists    WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
   await app.db.execute(`DELETE FROM labels   WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])

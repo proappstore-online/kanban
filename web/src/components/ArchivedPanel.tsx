@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ArchivedCardSummary } from '../lib/db'
+import { useEscape } from '../lib/useEscape'
 
 interface ArchivedPanelProps {
   cards: ArchivedCardSummary[] | null
@@ -23,13 +24,7 @@ export function ArchivedPanel({
 }: ArchivedPanelProps) {
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscape(onClose)
 
   async function withBusy(id: string, fn: () => Promise<void> | void) {
     setBusyId(id)

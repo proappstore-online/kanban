@@ -182,6 +182,7 @@ export function CommentsSection({
           }
           onKeyDown={onKeyDown}
           placeholder="Write a comment… type @ to mention. ⌘+Enter to post."
+          aria-label="New comment"
           rows={3}
           className="w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />

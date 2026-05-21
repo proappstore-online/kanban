@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import type { ActivityEntry } from '../types'
+import { useEscape } from '../lib/useEscape'
 
 interface ActivityPanelProps {
   entries: ActivityEntry[]
@@ -13,13 +13,7 @@ interface ActivityPanelProps {
  * keep this lightweight — last 50 events, server-formatted lines.
  */
 export function ActivityPanel({ entries, onClose, onOpenCard }: ActivityPanelProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscape(onClose)
 
   return (
     <aside

@@ -67,6 +67,7 @@ export function Workspaces({ user, workspaces, onOpen, onCreated }: WorkspacesPr
                   }
                 }}
                 placeholder="Workspace name"
+                aria-label="New workspace name"
                 className="bg-transparent text-base font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
               />
               <div className="mt-auto flex gap-2">

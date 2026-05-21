@@ -40,6 +40,7 @@ import { CardModal } from '../components/CardModal'
 import { PresenceBar } from '../components/PresenceBar'
 import { ActivityPanel } from '../components/ActivityPanel'
 import { ArchivedPanel } from '../components/ArchivedPanel'
+import { Loading } from '../components/Loading'
 import { MentionsBell } from '../components/MentionsBell'
 import { toast } from '../lib/toast'
 import {
@@ -176,11 +177,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
 
   // Loading / not-found guards before the mutation handlers reference `board`.
   if (board === undefined) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
-        Loading…
-      </div>
-    )
+    return <Loading />
   }
   if (board === null) {
     return (
@@ -691,6 +688,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
                   }
                 }}
                 placeholder="List title"
+                aria-label="New list title"
                 className="bg-transparent text-sm font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
               />
               <div className="flex gap-2">
