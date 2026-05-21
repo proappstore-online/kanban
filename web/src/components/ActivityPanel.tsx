@@ -23,7 +23,7 @@ export function ActivityPanel({ entries, onClose, onOpenCard }: ActivityPanelPro
 
   return (
     <aside
-      className="fixed inset-y-0 right-0 z-40 flex w-80 flex-col border-l border-[var(--line)] bg-[var(--paper)] shadow-[var(--shadow-soft)] sm:w-96"
+      className="fixed inset-y-0 right-0 z-40 flex w-[min(100vw,24rem)] flex-col border-l border-[var(--line)] bg-[var(--paper)] shadow-[var(--shadow-soft)] sm:w-96"
       aria-label="Activity feed"
     >
       <header className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">

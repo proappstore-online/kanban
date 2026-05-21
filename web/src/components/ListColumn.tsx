@@ -38,7 +38,7 @@ export function ListColumn({ list, onAddCard, onCardClick, onRename, onDelete }:
   }
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3">
+    <div className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none">
       <div className="flex items-center gap-2 px-1">
         {editingTitle ? (
           <input

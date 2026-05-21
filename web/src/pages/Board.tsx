@@ -397,7 +397,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <main className="flex flex-1 gap-4 overflow-x-auto px-4 py-6 sm:px-6">
+        <main className="flex flex-1 snap-x snap-mandatory gap-4 overflow-x-auto scroll-pl-4 px-4 py-6 sm:snap-none sm:px-6">
           {board.lists.map((list) => (
             <ListColumn
               key={list.id}
@@ -410,7 +410,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
           ))}
 
           {addingList ? (
-            <div className="flex w-72 shrink-0 flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3">
+            <div className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none">
               <input
                 autoFocus
                 value={newListTitle}
@@ -446,7 +446,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
           ) : (
             <button
               onClick={() => setAddingList(true)}
-              className="flex h-12 w-72 shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-[var(--line-strong)] text-sm font-medium text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)]"
+              className="flex h-12 w-[calc(100vw-2rem)] shrink-0 snap-start items-center justify-center rounded-2xl border-2 border-dashed border-[var(--line-strong)] text-sm font-medium text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] sm:w-72 sm:snap-align-none"
             >
               + Add a list
             </button>

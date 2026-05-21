@@ -1,7 +1,8 @@
 import { useRef } from 'react'
 import {
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -43,8 +44,18 @@ export function useBoardDragDrop({
   broadcast,
   onMovedAcross,
 }: UseBoardDragDropArgs) {
+  // Separate sensors for mouse and touch. PointerSensor doesn't reliably
+  // distinguish "I'm trying to drag" from "I'm trying to scroll vertically
+  // through a list of cards" on touch devices — every press starts a drag,
+  // breaking touch-scroll. Using TouchSensor with a hold delay means a
+  // quick swipe always scrolls, while a 200ms hold initiates the drag (the
+  // standard mobile kanban affordance). MouseSensor keeps its small 4px
+  // distance threshold for desktop responsiveness.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 

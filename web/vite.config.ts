@@ -36,15 +36,19 @@ export default defineConfig({
       manifest: {
         name: 'Kanban Pro',
         short_name: 'Kanban',
-        description: 'Team kanban boards with real-time collaboration on ProAppStore.',
+        description:
+          'Team kanban boards with real-time presence, assignees, comments, mentions, and live collaboration on ProAppStore.',
         start_url: '/',
+        scope: '/',
         display: 'standalone',
-        background_color: '#000000',
+        background_color: '#fffaf7',
         theme_color: '#000000',
         orientation: 'any',
+        categories: ['productivity', 'business'],
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
     }),
