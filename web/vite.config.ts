@@ -50,8 +50,6 @@ export default defineConfig({
         // wider device gets there for free. The wave-3 board work uses
         // `w-[calc(100vw-2rem)]` columns so the layout adapts even
         // narrower, but 360 is the honest support floor.
-        // @ts-expect-error — non-standard, but the platform compliance
-        // check reads it.
         min_viewport_width: 360,
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
