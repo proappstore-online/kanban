@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { redeemInvite } from '../lib/db'
+import type { Workspace } from '../types'
 
 interface AcceptInviteProps {
   code: string
-  onJoined: (tenantId: string) => void
+  onJoined: (workspace: Workspace) => void
 }
 
 type State =
   | { kind: 'pending' }
-  | { kind: 'ok'; name: string; tenantId: string }
+  | { kind: 'ok'; name: string }
   | { kind: 'bad' }
 
 export function AcceptInvite({ code, onJoined }: AcceptInviteProps) {
@@ -23,9 +24,9 @@ export function AcceptInvite({ code, onJoined }: AcceptInviteProps) {
           setState({ kind: 'bad' })
           return
         }
-        setState({ kind: 'ok', name: ws.name, tenantId: ws.id })
+        setState({ kind: 'ok', name: ws.name })
         // Brief pause so the user sees what they joined.
-        setTimeout(() => onJoined(ws.id), 600)
+        setTimeout(() => onJoined(ws), 600)
       })
       .catch(() => {
         if (!cancelled) setState({ kind: 'bad' })

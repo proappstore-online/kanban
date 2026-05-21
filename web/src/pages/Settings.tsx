@@ -5,12 +5,15 @@ import {
   createFeature,
   createInvite,
   deleteFeature,
+  leaveWorkspace,
   listFeatures,
   listInvites,
   listMembers,
   removeMember,
   renameFeature,
+  renameWorkspace,
   revokeInvite,
+  transferOwnership,
   updateMemberRole,
 } from '../lib/db'
 import { TopBar } from '../components/TopBar'
@@ -19,18 +22,63 @@ interface SettingsProps {
   user: User
   workspace: WorkspaceWithRole
   onBack: () => void
+  onLeft: () => void
 }
 
 const ROLES: Role[] = ['owner', 'admin', 'member', 'guest']
 
-export function Settings({ user, workspace, onBack }: SettingsProps) {
+export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
   const [members, setMembers] = useState<Member[] | null>(null)
   const [invites, setInvites] = useState<Invite[] | null>(null)
   const [features, setFeatures] = useState<Feature[] | null>(null)
   const [newFeatureName, setNewFeatureName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [workspaceName, setWorkspaceName] = useState(workspace.name)
 
   const canManage = workspace.role === 'owner' || workspace.role === 'admin'
+  const isOwner = workspace.role === 'owner'
+
+  async function handleRenameWorkspace() {
+    const trimmed = workspaceName.trim()
+    if (!trimmed || trimmed === workspace.name || !canManage) {
+      setWorkspaceName(workspace.name)
+      return
+    }
+    await renameWorkspace(workspace.id, trimmed)
+    workspace.name = trimmed
+  }
+
+  async function handleLeave() {
+    if (isOwner) {
+      alert('Transfer ownership to another member before leaving the workspace.')
+      return
+    }
+    if (!confirm(`Leave "${workspace.name}"? You'll lose access until invited back.`)) return
+    await leaveWorkspace(workspace.id)
+    onLeft()
+  }
+
+  async function handleTransfer(member: Member) {
+    if (!isOwner) return
+    if (member.userId === user.id) return
+    if (
+      !confirm(
+        `Transfer ownership of "${workspace.name}" to ${member.displayName}? You'll be demoted to admin.`,
+      )
+    ) {
+      return
+    }
+    await transferOwnership(workspace.id, member.userId)
+    workspace.role = 'admin'
+    workspace.ownerUserId = member.userId
+    setMembers((prev) =>
+      prev?.map((m) => {
+        if (m.userId === member.userId) return { ...m, role: 'owner' as Role }
+        if (m.userId === user.id) return { ...m, role: 'admin' as Role }
+        return m
+      }) ?? null,
+    )
+  }
 
   async function refresh() {
     const [m, i, f] = await Promise.all([
@@ -127,6 +175,46 @@ export function Settings({ user, workspace, onBack }: SettingsProps) {
       />
       <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-6">
         <section>
+          <SectionHeader>Workspace</SectionHeader>
+          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4">
+            <label className="block text-[10px] uppercase tracking-wider text-[var(--muted)]">
+              Name
+            </label>
+            <input
+              value={workspaceName}
+              readOnly={!canManage}
+              onChange={(e) => setWorkspaceName(e.target.value)}
+              onBlur={handleRenameWorkspace}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+              }}
+              className="mt-1 w-full bg-transparent text-sm font-medium text-[var(--ink)] outline-none"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <code className="rounded-full bg-[var(--paper-deep)] px-2 py-0.5 text-[11px] text-[var(--muted)]">
+                {workspace.slug}
+              </code>
+              <span className="text-[11px] text-[var(--muted)]">
+                URL slug — appears in shared links. Stable across renames.
+              </span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={handleLeave}
+                className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+                title={
+                  isOwner
+                    ? 'Transfer ownership to another member first'
+                    : 'Leave this workspace'
+                }
+              >
+                {isOwner ? 'Leave (owner must transfer first)' : 'Leave workspace'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10">
           <SectionHeader>Members</SectionHeader>
           {members === null ? (
             <p className="mt-3 text-sm text-[var(--muted)]">Loading…</p>
@@ -164,6 +252,15 @@ export function Settings({ user, workspace, onBack }: SettingsProps) {
                           </option>
                         ))}
                       </select>
+                      {isOwner && m.userId !== user.id && (
+                        <button
+                          onClick={() => handleTransfer(m)}
+                          className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+                          title="Transfer ownership to this member"
+                        >
+                          Make owner
+                        </button>
+                      )}
                       <button
                         onClick={() => handleRemove(m)}
                         className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"

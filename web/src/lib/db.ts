@@ -296,6 +296,64 @@ export async function createWorkspace(name: string): Promise<Workspace> {
   return { id, slug, name, ownerUserId: me.id, createdAt: now }
 }
 
+export async function renameWorkspace(workspaceId: string, name: string): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE workspaces SET name = ? WHERE id = ?`,
+    [name, workspaceId],
+  )
+}
+
+/**
+ * The current user leaves a workspace. Owners are blocked at the UI layer
+ * (they must transfer ownership first); we double-check server-side as a
+ * defence-in-depth measure: the DELETE silently no-ops if the row is the
+ * owner because we additionally require `role != 'owner'`. Caller should
+ * still surface a UX message for the owner case.
+ */
+export async function leaveWorkspace(workspaceId: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  await app.db.execute(
+    `DELETE FROM members WHERE tenant_id = ? AND user_id = ? AND role != 'owner'`,
+    [workspaceId, me.id],
+  )
+}
+
+/**
+ * Owner-only: transfer ownership to another member. Idempotent if the
+ * target is already the owner. The previous owner is demoted to `admin`
+ * so they don't suddenly lose all management capability.
+ */
+export async function transferOwnership(
+  workspaceId: string,
+  newOwnerUserId: string,
+): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  if (newOwnerUserId === me.id) return
+  // Verify the target is actually a member.
+  const { rows: target } = await app.db.query<{ id: string }>(
+    `SELECT id FROM members WHERE tenant_id = ? AND user_id = ?`,
+    [workspaceId, newOwnerUserId],
+  )
+  if (target.length === 0) throw new Error('Target user is not a member.')
+  await app.db.execute(
+    `UPDATE workspaces SET owner_user_id = ? WHERE id = ? AND owner_user_id = ?`,
+    [newOwnerUserId, workspaceId, me.id],
+  )
+  await app.db.execute(
+    `UPDATE members SET role = 'admin' WHERE tenant_id = ? AND user_id = ?`,
+    [workspaceId, me.id],
+  )
+  await app.db.execute(
+    `UPDATE members SET role = 'owner' WHERE tenant_id = ? AND user_id = ?`,
+    [workspaceId, newOwnerUserId],
+  )
+}
+
 // Members ---------------------------------------------------------------------
 
 interface MemberRow {
@@ -572,14 +630,20 @@ export async function renameBoard(
 
 export async function deleteBoard(tenantId: string, boardId: string): Promise<void> {
   await ensureMigrated()
-  // Cascade by hand — D1 doesn't enforce FK cascades.
-  await app.db.execute(`DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`, [boardId])
-  await app.db.execute(`DELETE FROM card_assignees WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`, [boardId])
-  await app.db.execute(`DELETE FROM checklist_items WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`, [boardId])
-  await app.db.execute(`DELETE FROM cards  WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM lists  WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM labels WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM boards WHERE id = ? AND tenant_id = ?`, [boardId, tenantId])
+  // Cascade by hand — D1 doesn't enforce FK cascades. The subqueries scope
+  // to `WHERE board_id = ?` rather than threading card_id lists through JS,
+  // so cleanup is one round-trip per child table.
+  const inCards = `card_id IN (SELECT id FROM cards WHERE board_id = ?)`
+  await app.db.execute(`DELETE FROM mentions       WHERE ${inCards}`, [boardId])
+  await app.db.execute(`DELETE FROM comments       WHERE ${inCards}`, [boardId])
+  await app.db.execute(`DELETE FROM card_labels    WHERE ${inCards}`, [boardId])
+  await app.db.execute(`DELETE FROM card_assignees WHERE ${inCards}`, [boardId])
+  await app.db.execute(`DELETE FROM checklist_items WHERE ${inCards}`, [boardId])
+  await app.db.execute(`DELETE FROM cards    WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
+  await app.db.execute(`DELETE FROM lists    WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
+  await app.db.execute(`DELETE FROM labels   WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
+  await app.db.execute(`DELETE FROM activity WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
+  await app.db.execute(`DELETE FROM boards   WHERE id       = ? AND tenant_id = ?`, [boardId, tenantId])
 }
 
 // Full board (lists + cards + labels + assignees + checklist) ----------------
@@ -807,11 +871,14 @@ export async function renameList(
 
 export async function deleteList(tenantId: string, listId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`, [listId])
-  await app.db.execute(`DELETE FROM card_assignees WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`, [listId])
-  await app.db.execute(`DELETE FROM checklist_items WHERE card_id IN (SELECT id FROM cards WHERE list_id = ?)`, [listId])
+  const inCards = `card_id IN (SELECT id FROM cards WHERE list_id = ?)`
+  await app.db.execute(`DELETE FROM mentions        WHERE ${inCards}`, [listId])
+  await app.db.execute(`DELETE FROM comments        WHERE ${inCards}`, [listId])
+  await app.db.execute(`DELETE FROM card_labels     WHERE ${inCards}`, [listId])
+  await app.db.execute(`DELETE FROM card_assignees  WHERE ${inCards}`, [listId])
+  await app.db.execute(`DELETE FROM checklist_items WHERE ${inCards}`, [listId])
   await app.db.execute(`DELETE FROM cards WHERE list_id = ? AND tenant_id = ?`, [listId, tenantId])
-  await app.db.execute(`DELETE FROM lists WHERE id = ? AND tenant_id = ?`, [listId, tenantId])
+  await app.db.execute(`DELETE FROM lists WHERE id      = ? AND tenant_id = ?`, [listId, tenantId])
 }
 
 // Cards -----------------------------------------------------------------------
@@ -907,8 +974,10 @@ export async function updateCard(
 
 export async function deleteCard(tenantId: string, cardId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM card_labels    WHERE card_id = ?`, [cardId])
-  await app.db.execute(`DELETE FROM card_assignees WHERE card_id = ?`, [cardId])
+  await app.db.execute(`DELETE FROM mentions        WHERE card_id = ?`, [cardId])
+  await app.db.execute(`DELETE FROM comments        WHERE card_id = ?`, [cardId])
+  await app.db.execute(`DELETE FROM card_labels     WHERE card_id = ?`, [cardId])
+  await app.db.execute(`DELETE FROM card_assignees  WHERE card_id = ?`, [cardId])
   await app.db.execute(`DELETE FROM checklist_items WHERE card_id = ?`, [cardId])
   await app.db.execute(`DELETE FROM cards WHERE id = ? AND tenant_id = ?`, [cardId, tenantId])
 }

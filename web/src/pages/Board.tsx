@@ -231,76 +231,81 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     const origin = dragOriginRef.current
     dragOriginRef.current = null
 
-    // First commit any same-list reorder produced by the drop target.
-    setBoard((prev) => {
-      if (!prev || !overId) return prev
-      const fromList = findListByCardId(prev, activeId)
-      if (!fromList) return prev
-      if (overId.startsWith('list:')) return prev
-      const overList = findListByCardId(prev, overId)
-      if (overList && overList.id === fromList.id) {
+    // Compute the final in-memory state synchronously: apply any same-list
+    // reorder, then derive what to persist from the resulting snapshot.
+    // Done this way (rather than two `setBoard` calls with an async write
+    // nested inside one of them) because firing an async DB call from
+    // inside a state-updater closure produces races: a remote realtime
+    // patch can interleave between the updater and the .then() callback,
+    // and `fromListId` captured at the start ends up reflecting a stale
+    // view of the board. Compute → setState → persist in clear phases.
+    if (!board) return
+    let snapshot: BoardWithLists = board
+    if (overId && !overId.startsWith('list:')) {
+      const fromList = findListByCardId(snapshot, activeId)
+      const overList = findListByCardId(snapshot, overId)
+      if (fromList && overList && overList.id === fromList.id) {
         const oldIndex = fromList.cards.findIndex((c) => c.id === activeId)
         const newIndex = fromList.cards.findIndex((c) => c.id === overId)
         if (oldIndex !== newIndex) {
-          const next = structuredClone(prev) as BoardWithLists
-          const list = next.lists.find((l) => l.id === fromList.id)!
+          snapshot = structuredClone(snapshot) as BoardWithLists
+          const list = snapshot.lists.find((l) => l.id === fromList.id)!
           list.cards = arrayMove(list.cards, oldIndex, newIndex)
-          return next
         }
       }
-      return prev
-    })
+    }
 
-    // Then read the post-state and persist. setBoard's functional updater
-    // gives us a guaranteed-fresh snapshot inside a microtask.
-    setBoard((latest) => {
-      if (!latest) return latest
-      const list = findListByCardId(latest, activeId)
-      if (!list) return latest
-      const idx = list.cards.findIndex((c) => c.id === activeId)
-      const prevPos = idx > 0 ? list.cards[idx - 1].position : null
-      const nextPos = idx < list.cards.length - 1 ? list.cards[idx + 1].position : null
-      const fromListId = origin?.fromListId ?? list.id
-      // Skip the write if the card neither moved lists nor changed neighbours.
-      const neighboursUnchanged =
-        fromListId === list.id && prevPos === null && nextPos === null && list.cards.length === 1
-      if (neighboursUnchanged) return latest
+    const listForActive = findListByCardId(snapshot, activeId)
+    if (!listForActive) {
+      // Active card vanished mid-drag (e.g. remote delete). Reconcile.
+      setBoard(snapshot)
+      refetch().catch(() => {})
+      return
+    }
+    const idx = listForActive.cards.findIndex((c) => c.id === activeId)
+    const prevPos = idx > 0 ? listForActive.cards[idx - 1].position : null
+    const nextPos =
+      idx < listForActive.cards.length - 1 ? listForActive.cards[idx + 1].position : null
+    const fromListId = origin?.fromListId ?? listForActive.id
+    const movedAcross = fromListId !== listForActive.id
+    const neighboursUnchanged =
+      !movedAcross && prevPos === null && nextPos === null && listForActive.cards.length === 1
 
-      const movedAcross = fromListId !== list.id
-      const fromListTitle = latest.lists.find((l) => l.id === fromListId)?.title
-      const toListTitle = list.title
-      const movedCardTitle = list.cards.find((c) => c.id === activeId)?.title
+    setBoard(snapshot)
+    if (neighboursUnchanged) return
 
-      moveCard(workspace.id, activeId, list.id, prevPos, nextPos)
-        .then((position) => {
-          setBoard((b) => {
-            if (!b) return b
-            const next = structuredClone(b) as BoardWithLists
-            const l = findListByCardId(next, activeId)
-            const c = l?.cards.find((c) => c.id === activeId)
-            if (c) c.position = position
-            return next
-          })
-          broadcast({
-            kind: 'card.moved',
-            cardId: activeId,
-            fromListId,
-            toListId: list.id,
-            position,
-          })
-          if (movedAcross) {
-            logAndAnnounce(
-              'card.moved',
-              { title: movedCardTitle, from: fromListTitle, to: toListTitle },
-              activeId,
-            )
-          }
+    const fromListTitle = snapshot.lists.find((l) => l.id === fromListId)?.title
+    const toListTitle = listForActive.title
+    const movedCardTitle = listForActive.cards.find((c) => c.id === activeId)?.title
+
+    moveCard(workspace.id, activeId, listForActive.id, prevPos, nextPos)
+      .then((position) => {
+        setBoard((b) => {
+          if (!b) return b
+          const next = structuredClone(b) as BoardWithLists
+          const l = findListByCardId(next, activeId)
+          const c = l?.cards.find((c) => c.id === activeId)
+          if (c) c.position = position
+          return next
         })
-        .catch(() => {
-          refetch().catch(() => {})
+        broadcast({
+          kind: 'card.moved',
+          cardId: activeId,
+          fromListId,
+          toListId: listForActive.id,
+          position,
         })
-      return latest
-    })
+        if (movedAcross) {
+          logAndAnnounce(
+            'card.moved',
+            { title: movedCardTitle, from: fromListTitle, to: toListTitle },
+            activeId,
+          )
+        }
+      })
+      .catch(() => {
+        refetch().catch(() => {})
+      })
   }
 
   if (board === undefined) {

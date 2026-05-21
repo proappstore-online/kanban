@@ -12,27 +12,42 @@ import { AcceptInvite } from './pages/AcceptInvite'
 import { listMyWorkspaces } from './lib/db'
 import type { WorkspaceWithRole } from './types'
 
+/**
+ * Hash routes use a `workspaceRef` that can be either a slug
+ * (`acme-marketing-zx7y`) or the raw UUID (back-compat with v1 URLs). We
+ * resolve refs to the WorkspaceWithRole at render time and rewrite the URL
+ * to use the slug, so any shared link stabilises onto the human-readable
+ * form within one navigation.
+ */
 type Route =
   | { name: 'workspaces' }
-  | { name: 'boards'; tenantId: string }
-  | { name: 'board'; tenantId: string; boardId: string }
-  | { name: 'settings'; tenantId: string }
-  | { name: 'my-tasks'; tenantId: string }
+  | { name: 'boards'; workspaceRef: string }
+  | { name: 'board'; workspaceRef: string; boardId: string }
+  | { name: 'settings'; workspaceRef: string }
+  | { name: 'my-tasks'; workspaceRef: string }
   | { name: 'invite'; code: string }
 
 function parseHash(): Route {
   const h = location.hash
-  let m = h.match(/^#\/w\/([\w-]+)\/board\/([\w-]+)$/)
-  if (m) return { name: 'board', tenantId: m[1], boardId: m[2] }
-  m = h.match(/^#\/w\/([\w-]+)\/settings$/)
-  if (m) return { name: 'settings', tenantId: m[1] }
-  m = h.match(/^#\/w\/([\w-]+)\/my$/)
-  if (m) return { name: 'my-tasks', tenantId: m[1] }
-  m = h.match(/^#\/w\/([\w-]+)$/)
-  if (m) return { name: 'boards', tenantId: m[1] }
+  let m = h.match(/^#\/w\/([^/]+)\/board\/([\w-]+)$/)
+  if (m) return { name: 'board', workspaceRef: decodeURIComponent(m[1]), boardId: m[2] }
+  m = h.match(/^#\/w\/([^/]+)\/settings$/)
+  if (m) return { name: 'settings', workspaceRef: decodeURIComponent(m[1]) }
+  m = h.match(/^#\/w\/([^/]+)\/my$/)
+  if (m) return { name: 'my-tasks', workspaceRef: decodeURIComponent(m[1]) }
+  m = h.match(/^#\/w\/([^/]+)$/)
+  if (m) return { name: 'boards', workspaceRef: decodeURIComponent(m[1]) }
   m = h.match(/^#\/invite\/([\w-]+)$/)
   if (m) return { name: 'invite', code: m[1] }
   return { name: 'workspaces' }
+}
+
+/** Match by slug first (preferred URL form), fall back to id (legacy links). */
+function findWorkspace(
+  workspaces: WorkspaceWithRole[],
+  ref: string,
+): WorkspaceWithRole | undefined {
+  return workspaces.find((w) => w.slug === ref) ?? workspaces.find((w) => w.id === ref)
 }
 
 export default function App() {
@@ -78,6 +93,22 @@ export default function App() {
     }
   }, [user, atWorkspacesRoute])
 
+  // Self-heal the URL: if the user hit a UUID-based link, rewrite to the
+  // slug form so the next share is human-readable. `history.replaceState`
+  // keeps the back-button history clean.
+  useEffect(() => {
+    if (!workspaces) return
+    if (route.name === 'workspaces' || route.name === 'invite') return
+    const ws = findWorkspace(workspaces, route.workspaceRef)
+    if (!ws || ws.slug === route.workspaceRef) return
+    const replaced = location.hash.replace(
+      new RegExp(`^#/w/${escapeRegex(route.workspaceRef)}`),
+      `#/w/${ws.slug}`,
+    )
+    history.replaceState(null, '', `${location.pathname}${location.search}${replaced}`)
+    setRoute(parseHash())
+  }, [workspaces, route])
+
   if (!ready) {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
@@ -92,8 +123,8 @@ export default function App() {
     return (
       <AcceptInvite
         code={route.code}
-        onJoined={(tenantId) => {
-          location.hash = `#/w/${tenantId}`
+        onJoined={(ws) => {
+          location.hash = `#/w/${ws.slug}`
         }}
       />
     )
@@ -113,7 +144,7 @@ export default function App() {
         user={user}
         onCreated={(ws) => {
           setWorkspaces([{ ...ws, role: 'owner' }])
-          location.hash = `#/w/${ws.id}`
+          location.hash = `#/w/${ws.slug}`
         }}
       />
     )
@@ -124,58 +155,68 @@ export default function App() {
       <Workspaces
         user={user}
         workspaces={workspaces}
-        onOpen={(id) => (location.hash = `#/w/${id}`)}
+        onOpen={(slug) => (location.hash = `#/w/${slug}`)}
         onCreated={(ws) => {
           setWorkspaces((prev) => [{ ...ws, role: 'owner' }, ...(prev ?? [])])
-          location.hash = `#/w/${ws.id}`
+          location.hash = `#/w/${ws.slug}`
         }}
       />
     )
   }
 
   if (route.name === 'boards') {
-    const ws = workspaces.find((w) => w.id === route.tenantId)
+    const ws = findWorkspace(workspaces, route.workspaceRef)
     if (!ws) return <NotInWorkspace />
     return (
       <Boards
         user={user}
         workspace={ws}
-        onOpen={(boardId) => (location.hash = `#/w/${ws.id}/board/${boardId}`)}
-        onSettings={() => (location.hash = `#/w/${ws.id}/settings`)}
+        onOpen={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
+        onSettings={() => (location.hash = `#/w/${ws.slug}/settings`)}
         onSwitch={() => (location.hash = '')}
-        onMyTasks={() => (location.hash = `#/w/${ws.id}/my`)}
+        onMyTasks={() => (location.hash = `#/w/${ws.slug}/my`)}
       />
     )
   }
 
   if (route.name === 'settings') {
-    const ws = workspaces.find((w) => w.id === route.tenantId)
+    const ws = findWorkspace(workspaces, route.workspaceRef)
     if (!ws) return <NotInWorkspace />
-    return <Settings user={user} workspace={ws} onBack={() => (location.hash = `#/w/${ws.id}`)} />
+    return (
+      <Settings
+        user={user}
+        workspace={ws}
+        onBack={() => (location.hash = `#/w/${ws.slug}`)}
+        onLeft={() => {
+          setWorkspaces((prev) => prev?.filter((w) => w.id !== ws.id) ?? null)
+          location.hash = ''
+        }}
+      />
+    )
   }
 
   if (route.name === 'my-tasks') {
-    const ws = workspaces.find((w) => w.id === route.tenantId)
+    const ws = findWorkspace(workspaces, route.workspaceRef)
     if (!ws) return <NotInWorkspace />
     return (
       <MyTasks
         user={user}
         workspace={ws}
-        onBack={() => (location.hash = `#/w/${ws.id}`)}
-        onOpenBoard={(boardId) => (location.hash = `#/w/${ws.id}/board/${boardId}`)}
+        onBack={() => (location.hash = `#/w/${ws.slug}`)}
+        onOpenBoard={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
       />
     )
   }
 
   if (route.name === 'board') {
-    const ws = workspaces.find((w) => w.id === route.tenantId)
+    const ws = findWorkspace(workspaces, route.workspaceRef)
     if (!ws) return <NotInWorkspace />
     return (
       <Board
         boardId={route.boardId}
         user={user}
         workspace={ws}
-        onBack={() => (location.hash = `#/w/${ws.id}`)}
+        onBack={() => (location.hash = `#/w/${ws.slug}`)}
       />
     )
   }
@@ -199,4 +240,8 @@ function NotInWorkspace() {
       </div>
     </div>
   )
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
