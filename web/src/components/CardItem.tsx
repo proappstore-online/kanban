@@ -1,14 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties } from 'react'
-import type { Assignee, Card, LabelColor } from '../types'
+import type { Assignee, Card, LabelColor, ListKind } from '../types'
+import { STATUS_LABEL } from '../types'
 
 interface CardItemProps {
   card: Card
+  listKind: ListKind
   onClick: () => void
 }
 
-export function CardItem({ card, onClick }: CardItemProps) {
+export function CardItem({ card, listKind, onClick }: CardItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: 'card', cardId: card.id },
@@ -34,8 +36,9 @@ export function CardItem({ card, onClick }: CardItemProps) {
       onClick={onClick}
       className="group cursor-grab touch-none rounded-xl border border-[var(--line)] bg-[var(--paper)] p-3 text-sm text-[var(--ink)] shadow-[var(--shadow-card)] transition-colors hover:border-[var(--line-strong)] active:cursor-grabbing"
     >
-      {labels.length > 0 && (
-        <div className="-mt-0.5 mb-2 flex flex-wrap gap-1">
+      {(labels.length > 0 || listKind !== 'other') && (
+        <div className="-mt-0.5 mb-2 flex flex-wrap items-center gap-1">
+          {listKind !== 'other' && <StatusPill kind={listKind} />}
           {labels.map((l) => (
             <LabelChip key={l.id} color={l.color} name={l.name} />
           ))}
@@ -49,11 +52,15 @@ export function CardItem({ card, onClick }: CardItemProps) {
       ) : null}
 
       {(card.dueAt !== undefined ||
+        card.etaAt !== undefined ||
         checklist.length > 0 ||
         card.commentCount > 0 ||
         card.assignees.length > 0) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {card.dueAt !== undefined && <DueChip dueAt={card.dueAt} />}
+          {card.etaAt !== undefined && (
+            <EtaChip etaAt={card.etaAt} dueAt={card.dueAt} />
+          )}
           {checklist.length > 0 && (
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -191,6 +198,63 @@ function formatDueLabel(d: Date, daysDelta: number): string {
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   }
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/**
+ * Workflow status as a colored pill — derived from the parent list's `kind`.
+ * Lives on the card preview so a team member browsing the My Tasks page or
+ * an out-of-list view immediately knows where the card sits in the flow.
+ */
+function StatusPill({ kind }: { kind: ListKind }) {
+  const palette = statusPalette(kind)
+  return (
+    <span
+      className="inline-flex h-[18px] items-center rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide"
+      style={{ background: palette.bg, color: palette.fg }}
+      title={`Status: ${STATUS_LABEL[kind]}`}
+    >
+      {STATUS_LABEL[kind]}
+    </span>
+  )
+}
+
+function statusPalette(kind: ListKind): { bg: string; fg: string } {
+  switch (kind) {
+    case 'new':
+      return { bg: 'var(--line)', fg: 'var(--muted)' }
+    case 'wip':
+      return { bg: 'var(--sky-soft)', fg: 'var(--sky-deep)' }
+    case 'testing':
+      return { bg: 'rgba(198, 134, 42, 0.16)', fg: 'var(--warning)' }
+    case 'launched':
+      return { bg: 'var(--mint-soft)', fg: 'var(--mint-deep)' }
+    case 'other':
+      return { bg: 'var(--line)', fg: 'var(--muted)' }
+  }
+}
+
+/**
+ * ETA chip rendered alongside the due-date chip. When ETA > dueAt the chip
+ * goes red ("at risk") — that's the whole point of having two fields: the
+ * gap between deadline and current best-estimate is the slip signal.
+ */
+function EtaChip({ etaAt, dueAt }: { etaAt: number; dueAt?: number }) {
+  const atRisk = dueAt !== undefined && etaAt > dueAt
+  const d = new Date(etaAt)
+  const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const style: CSSProperties = atRisk
+    ? { background: 'var(--error)', color: '#fff' }
+    : { background: 'transparent', color: 'var(--muted)', border: '1px solid var(--line)' }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={style}
+      title={atRisk ? `ETA ${d.toLocaleString()} — past deadline` : `ETA ${d.toLocaleString()}`}
+    >
+      <span aria-hidden>🎯</span>
+      ETA {label}
+    </span>
+  )
 }
 
 function labelStyles(color: LabelColor): { bg: string; fg: string } {

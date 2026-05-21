@@ -10,7 +10,14 @@ interface CardModalProps {
   comments: Comment[]
   selfUserId: string
   onClose: () => void
-  onSaveBasics: (patch: { title?: string; description?: string | null; dueAt?: number | null }) => void
+  onSaveBasics: (patch: {
+    title?: string
+    description?: string | null
+    requirement?: string | null
+    acceptanceCriteria?: string | null
+    dueAt?: number | null
+    etaAt?: number | null
+  }) => void
   onLabelsChange: (labels: Label[]) => void
   onChecklistChange: (items: ChecklistItem[]) => void
   onAssigneeToggle: (member: Member) => void
@@ -35,7 +42,10 @@ export function CardModal({
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description ?? '')
+  const [requirement, setRequirement] = useState(card.requirement ?? '')
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(card.acceptanceCriteria ?? '')
   const [dueAt, setDueAt] = useState<number | undefined>(card.dueAt)
+  const [etaAt, setEtaAt] = useState<number | undefined>(card.etaAt)
   const [newItem, setNewItem] = useState('')
 
   // Snapshots of the basics at open-time, to compute a minimal patch on close
@@ -43,7 +53,10 @@ export function CardModal({
   const initialRef = useRef({
     title: card.title,
     description: card.description ?? '',
+    requirement: card.requirement ?? '',
+    acceptanceCriteria: card.acceptanceCriteria ?? '',
     dueAt: card.dueAt,
+    etaAt: card.etaAt,
   })
 
   useEffect(() => {
@@ -57,10 +70,21 @@ export function CardModal({
 
   function close() {
     const init = initialRef.current
-    const patch: { title?: string; description?: string | null; dueAt?: number | null } = {}
+    const patch: {
+      title?: string
+      description?: string | null
+      requirement?: string | null
+      acceptanceCriteria?: string | null
+      dueAt?: number | null
+      etaAt?: number | null
+    } = {}
     if (title.trim() && title.trim() !== init.title) patch.title = title.trim()
     if (description !== init.description) patch.description = description.trim() || null
+    if (requirement !== init.requirement) patch.requirement = requirement.trim() || null
+    if (acceptanceCriteria !== init.acceptanceCriteria)
+      patch.acceptanceCriteria = acceptanceCriteria.trim() || null
     if (dueAt !== init.dueAt) patch.dueAt = dueAt ?? null
+    if (etaAt !== init.etaAt) patch.etaAt = etaAt ?? null
     if (Object.keys(patch).length) onSaveBasics(patch)
     onClose()
   }
@@ -176,27 +200,26 @@ export function CardModal({
           </div>
         )}
 
-        <SectionLabel>Due date</SectionLabel>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            type="datetime-local"
-            value={dueAt !== undefined ? toLocalInput(dueAt) : ''}
-            onChange={(e) => {
-              const v = e.target.value
-              setDueAt(v ? new Date(v).getTime() : undefined)
-            }}
-            className="rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
+        <SectionLabel>Dates</SectionLabel>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <DateField
+            label="Due date"
+            sub="Hard deadline"
+            value={dueAt}
+            onChange={setDueAt}
           />
-          {dueAt !== undefined && (
-            <button
-              type="button"
-              onClick={() => setDueAt(undefined)}
-              className="rounded-full border border-[var(--line)] px-3 py-1 text-[11px] text-[var(--muted)] hover:text-[var(--ink)]"
-            >
-              Clear
-            </button>
-          )}
+          <DateField
+            label="ETA"
+            sub="Best estimate"
+            value={etaAt}
+            onChange={setEtaAt}
+          />
         </div>
+        {etaAt !== undefined && dueAt !== undefined && etaAt > dueAt && (
+          <p className="mt-1 text-[11px] text-[var(--error)]">
+            ETA is past the due date — at risk.
+          </p>
+        )}
 
         <SectionLabel>
           Checklist
@@ -272,7 +295,25 @@ export function CardModal({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Add a more detailed description…"
-          rows={5}
+          rows={4}
+          className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
+        />
+
+        <SectionLabel>Requirement</SectionLabel>
+        <textarea
+          value={requirement}
+          onChange={(e) => setRequirement(e.target.value)}
+          placeholder="What needs to be done? What's the user-visible outcome?"
+          rows={3}
+          className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
+        />
+
+        <SectionLabel>Acceptance criteria</SectionLabel>
+        <textarea
+          value={acceptanceCriteria}
+          onChange={(e) => setAcceptanceCriteria(e.target.value)}
+          placeholder="How do we know this is done? Bullet the checks."
+          rows={3}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
 
@@ -340,4 +381,50 @@ function toLocalInput(ts: number): string {
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/**
+ * Datetime field used twice (Due date + ETA). Pulled into its own component
+ * so the layout stays consistent and clearing semantics are identical for
+ * both. The two-line label lets the user tell the fields apart without
+ * tooltips.
+ */
+function DateField({
+  label,
+  sub,
+  value,
+  onChange,
+}: {
+  label: string
+  sub: string
+  value: number | undefined
+  onChange: (next: number | undefined) => void
+}) {
+  return (
+    <label className="flex flex-col gap-1 rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-2">
+      <span className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
+        {label} <span className="opacity-60">— {sub}</span>
+      </span>
+      <div className="flex items-center gap-2">
+        <input
+          type="datetime-local"
+          value={value !== undefined ? toLocalInput(value) : ''}
+          onChange={(e) => {
+            const v = e.target.value
+            onChange(v ? new Date(v).getTime() : undefined)
+          }}
+          className="min-w-0 flex-1 bg-transparent text-xs text-[var(--ink)] outline-none"
+        />
+        {value !== undefined && (
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="text-[10px] uppercase tracking-wider text-[var(--muted)] hover:text-[var(--ink)]"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </label>
+  )
 }

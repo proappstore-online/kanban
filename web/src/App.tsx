@@ -7,6 +7,7 @@ import { Workspaces } from './pages/Workspaces'
 import { Boards } from './pages/Boards'
 import { Board } from './pages/Board'
 import { Settings } from './pages/Settings'
+import { MyTasks } from './pages/MyTasks'
 import { AcceptInvite } from './pages/AcceptInvite'
 import { listMyWorkspaces } from './lib/db'
 import type { WorkspaceWithRole } from './types'
@@ -16,6 +17,7 @@ type Route =
   | { name: 'boards'; tenantId: string }
   | { name: 'board'; tenantId: string; boardId: string }
   | { name: 'settings'; tenantId: string }
+  | { name: 'my-tasks'; tenantId: string }
   | { name: 'invite'; code: string }
 
 function parseHash(): Route {
@@ -24,6 +26,8 @@ function parseHash(): Route {
   if (m) return { name: 'board', tenantId: m[1], boardId: m[2] }
   m = h.match(/^#\/w\/([\w-]+)\/settings$/)
   if (m) return { name: 'settings', tenantId: m[1] }
+  m = h.match(/^#\/w\/([\w-]+)\/my$/)
+  if (m) return { name: 'my-tasks', tenantId: m[1] }
   m = h.match(/^#\/w\/([\w-]+)$/)
   if (m) return { name: 'boards', tenantId: m[1] }
   m = h.match(/^#\/invite\/([\w-]+)$/)
@@ -139,6 +143,7 @@ export default function App() {
         onOpen={(boardId) => (location.hash = `#/w/${ws.id}/board/${boardId}`)}
         onSettings={() => (location.hash = `#/w/${ws.id}/settings`)}
         onSwitch={() => (location.hash = '')}
+        onMyTasks={() => (location.hash = `#/w/${ws.id}/my`)}
       />
     )
   }
@@ -147,6 +152,19 @@ export default function App() {
     const ws = workspaces.find((w) => w.id === route.tenantId)
     if (!ws) return <NotInWorkspace />
     return <Settings user={user} workspace={ws} onBack={() => (location.hash = `#/w/${ws.id}`)} />
+  }
+
+  if (route.name === 'my-tasks') {
+    const ws = workspaces.find((w) => w.id === route.tenantId)
+    if (!ws) return <NotInWorkspace />
+    return (
+      <MyTasks
+        user={user}
+        workspace={ws}
+        onBack={() => (location.hash = `#/w/${ws.id}`)}
+        onOpenBoard={(boardId) => (location.hash = `#/w/${ws.id}/board/${boardId}`)}
+      />
+    )
   }
 
   if (route.name === 'board') {

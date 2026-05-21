@@ -83,7 +83,12 @@ export function ListColumn({ list, onAddCard, onCardClick, onRename, onDelete }:
             </div>
           ) : (
             list.cards.map((card) => (
-              <CardItem key={card.id} card={card} onClick={() => onCardClick(card)} />
+              <CardItem
+                key={card.id}
+                card={card}
+                listKind={list.kind}
+                onClick={() => onCardClick(card)}
+              />
             ))
           )}
         </div>

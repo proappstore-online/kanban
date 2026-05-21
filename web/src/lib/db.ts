@@ -3,22 +3,26 @@ import type {
   ActivityEntry,
   ActivityKind,
   Assignee,
+  AssignedTask,
   Board,
   BoardSummary,
   BoardWithLists,
   Card,
   ChecklistItem,
   Comment,
+  Feature,
   Invite,
   Label,
   LabelColor,
   List,
+  ListKind,
   Member,
   Mention,
   Role,
   Workspace,
   WorkspaceWithRole,
 } from '../types'
+import { STATUS_KINDS, STATUS_LABEL } from '../types'
 import { between, firstPosition } from './frac'
 
 const MIGRATIONS = [
@@ -181,6 +185,25 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_mentions_user ON mentions(tenant_id, mentioned_user_id, read_at, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_mentions_comment ON mentions(comment_id);
+    `,
+  },
+  {
+    name: '0003_features_status_eta_reqs',
+    sql: `
+      CREATE TABLE IF NOT EXISTS features (
+        id         TEXT PRIMARY KEY,
+        tenant_id  TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_features_tenant ON features(tenant_id, sort_order);
+
+      ALTER TABLE boards ADD COLUMN feature_id TEXT;
+      ALTER TABLE lists  ADD COLUMN kind TEXT NOT NULL DEFAULT 'other';
+      ALTER TABLE cards  ADD COLUMN eta_at INTEGER;
+      ALTER TABLE cards  ADD COLUMN requirement TEXT;
+      ALTER TABLE cards  ADD COLUMN acceptance_criteria TEXT;
     `,
   },
 ]
@@ -444,6 +467,7 @@ interface BoardRow {
   id: string
   tenant_id: string
   name: string
+  feature_id: string | null
   background: string | null
   archived: number
   created_by: string
@@ -456,6 +480,7 @@ function rowToBoard(r: BoardRow): Board {
     id: r.id,
     tenantId: r.tenant_id,
     name: r.name,
+    featureId: r.feature_id ?? undefined,
     background: r.background ?? undefined,
     archived: r.archived !== 0,
     createdAt: r.created_at,
@@ -469,28 +494,68 @@ export async function listBoards(tenantId: string): Promise<BoardSummary[]> {
     `SELECT * FROM boards WHERE tenant_id = ? AND archived = 0 ORDER BY updated_at DESC`,
     [tenantId],
   )
-  return rows.map((r) => ({ id: r.id, name: r.name, updatedAt: r.updated_at }))
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    featureId: r.feature_id ?? undefined,
+    updatedAt: r.updated_at,
+  }))
 }
 
-export async function createBoard(tenantId: string, name: string): Promise<Board> {
+/**
+ * Create a board and auto-seed the four canonical workflow lists
+ * (New / In progress / Testing / Launched). Per the agreed "status IS the
+ * list" model, every new board ships with the same starting columns.
+ * Users can still rename or delete them — the `kind` column persists
+ * regardless of title, so the cross-board My Tasks view keeps grouping
+ * correctly.
+ */
+export async function createBoard(
+  tenantId: string,
+  name: string,
+  featureId?: string,
+): Promise<Board> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
   const id = rid()
   const now = Date.now()
   await app.db.execute(
-    `INSERT INTO boards (id, tenant_id, name, archived, created_by, created_at, updated_at)
-     VALUES (?,?,?,0,?,?,?)`,
-    [id, tenantId, name, me.id, now, now],
+    `INSERT INTO boards (id, tenant_id, name, feature_id, archived, created_by, created_at, updated_at)
+     VALUES (?,?,?,?,0,?,?,?)`,
+    [id, tenantId, name, featureId ?? null, me.id, now, now],
   )
+  // Seed four canonical workflow lists, spaced by 1024 so reorders never
+  // collide with the seed positions.
+  for (let i = 0; i < STATUS_KINDS.length; i++) {
+    const kind = STATUS_KINDS[i]
+    await app.db.execute(
+      `INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at)
+       VALUES (?,?,?,?,?,0,?,?)`,
+      [rid(), tenantId, id, STATUS_LABEL[kind], (i + 1) * 1024, kind, now],
+    )
+  }
   return {
     id,
     tenantId,
     name,
+    featureId,
     archived: false,
     createdAt: now,
     updatedAt: now,
   }
+}
+
+export async function setBoardFeature(
+  tenantId: string,
+  boardId: string,
+  featureId: string | null,
+): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE boards SET feature_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+    [featureId, Date.now(), boardId, tenantId],
+  )
 }
 
 export async function renameBoard(
@@ -526,6 +591,7 @@ interface ListRow {
   title: string
   position: number
   archived: number
+  kind: ListKind
   created_at: number
 }
 
@@ -537,7 +603,10 @@ interface CardRow {
   position: number
   title: string
   description: string | null
+  requirement: string | null
+  acceptance_criteria: string | null
   due_at: number | null
+  eta_at: number | null
   archived: number
   created_by: string
   created_at: number
@@ -668,6 +737,7 @@ export async function getBoardFull(
     boardId: lr.board_id,
     title: lr.title,
     position: lr.position,
+    kind: lr.kind,
     cards: [],
   }))
   const listById = new Map(lists.map((l) => [l.id, l]))
@@ -681,7 +751,10 @@ export async function getBoardFull(
       listId: cr.list_id,
       title: cr.title,
       description: cr.description ?? undefined,
+      requirement: cr.requirement ?? undefined,
+      acceptanceCriteria: cr.acceptance_criteria ?? undefined,
       dueAt: cr.due_at ?? undefined,
+      etaAt: cr.eta_at ?? undefined,
       position: cr.position,
       labels: labelsByCard.get(cr.id) ?? [],
       checklist: checklistByCard.get(cr.id) ?? [],
@@ -705,18 +778,19 @@ export async function createList(
   boardId: string,
   title: string,
   afterPosition: number | null,
+  kind: ListKind = 'other',
 ): Promise<List> {
   await ensureMigrated()
   const id = rid()
   const position = between(afterPosition, null) // append at end
   const now = Date.now()
   await app.db.execute(
-    `INSERT INTO lists (id, tenant_id, board_id, title, position, archived, created_at)
-     VALUES (?,?,?,?,?,0,?)`,
-    [id, tenantId, boardId, title, position, now],
+    `INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at)
+     VALUES (?,?,?,?,?,0,?,?)`,
+    [id, tenantId, boardId, title, position, kind, now],
   )
   await touchBoard(tenantId, boardId)
-  return { id, boardId, title, position, cards: [] }
+  return { id, boardId, title, position, kind, cards: [] }
 }
 
 export async function renameList(
@@ -782,7 +856,10 @@ export async function createCard(
 export interface CardPatch {
   title?: string
   description?: string | null
+  requirement?: string | null
+  acceptanceCriteria?: string | null
   dueAt?: number | null
+  etaAt?: number | null
 }
 
 export async function updateCard(
@@ -801,9 +878,21 @@ export async function updateCard(
     sets.push('description = ?')
     params.push(patch.description)
   }
+  if (patch.requirement !== undefined) {
+    sets.push('requirement = ?')
+    params.push(patch.requirement)
+  }
+  if (patch.acceptanceCriteria !== undefined) {
+    sets.push('acceptance_criteria = ?')
+    params.push(patch.acceptanceCriteria)
+  }
   if (patch.dueAt !== undefined) {
     sets.push('due_at = ?')
     params.push(patch.dueAt)
+  }
+  if (patch.etaAt !== undefined) {
+    sets.push('eta_at = ?')
+    params.push(patch.etaAt)
   }
   if (sets.length === 0) return
   sets.push('updated_at = ?')
@@ -1262,6 +1351,149 @@ export async function listBoardActivity(
     [tenantId, boardId, limit],
   )
   return rows.map(rowToActivity)
+}
+
+// Features -------------------------------------------------------------------
+
+interface FeatureRow {
+  id: string
+  tenant_id: string
+  name: string
+  sort_order: number
+  created_at: number
+}
+
+function rowToFeature(r: FeatureRow): Feature {
+  return {
+    id: r.id,
+    tenantId: r.tenant_id,
+    name: r.name,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listFeatures(tenantId: string): Promise<Feature[]> {
+  await ensureMigrated()
+  const { rows } = await app.db.query<FeatureRow>(
+    `SELECT * FROM features WHERE tenant_id = ? ORDER BY sort_order, created_at`,
+    [tenantId],
+  )
+  return rows.map(rowToFeature)
+}
+
+export async function createFeature(tenantId: string, name: string): Promise<Feature> {
+  await ensureMigrated()
+  const id = rid()
+  const now = Date.now()
+  // sort_order = next available; cheap to recompute on insert.
+  const { rows: maxRows } = await app.db.query<{ n: number | null }>(
+    `SELECT MAX(sort_order) AS n FROM features WHERE tenant_id = ?`,
+    [tenantId],
+  )
+  const next = (Number(maxRows[0]?.n ?? 0) || 0) + 1
+  await app.db.execute(
+    `INSERT INTO features (id, tenant_id, name, sort_order, created_at) VALUES (?,?,?,?,?)`,
+    [id, tenantId, name, next, now],
+  )
+  return { id, tenantId, name, sortOrder: next, createdAt: now }
+}
+
+export async function renameFeature(
+  tenantId: string,
+  featureId: string,
+  name: string,
+): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE features SET name = ? WHERE id = ? AND tenant_id = ?`,
+    [name, featureId, tenantId],
+  )
+}
+
+export async function deleteFeature(tenantId: string, featureId: string): Promise<void> {
+  await ensureMigrated()
+  // Boards under this feature get orphaned to "Ungrouped" (feature_id NULL).
+  await app.db.execute(
+    `UPDATE boards SET feature_id = NULL WHERE feature_id = ? AND tenant_id = ?`,
+    [featureId, tenantId],
+  )
+  await app.db.execute(`DELETE FROM features WHERE id = ? AND tenant_id = ?`, [featureId, tenantId])
+}
+
+// My Tasks (cross-board, current user) ---------------------------------------
+
+interface AssignedTaskRow {
+  card_id: string
+  card_title: string
+  board_id: string
+  board_name: string
+  feature_id: string | null
+  feature_name: string | null
+  list_id: string
+  list_title: string
+  list_kind: ListKind
+  due_at: number | null
+  eta_at: number | null
+  updated_at: number
+}
+
+/**
+ * Every non-archived card assigned to the current user across all boards in
+ * the workspace, joined with board / feature / list context so the My Tasks
+ * view can render rows without per-card roundtrips. Ordered by list-kind
+ * priority (new → wip → testing → launched → other) then updated_at desc.
+ */
+export async function listMyTasks(tenantId: string): Promise<AssignedTask[]> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) return []
+  const { rows } = await app.db.query<AssignedTaskRow>(
+    `SELECT
+       c.id          AS card_id,
+       c.title       AS card_title,
+       b.id          AS board_id,
+       b.name        AS board_name,
+       b.feature_id  AS feature_id,
+       f.name        AS feature_name,
+       l.id          AS list_id,
+       l.title       AS list_title,
+       l.kind        AS list_kind,
+       c.due_at      AS due_at,
+       c.eta_at      AS eta_at,
+       c.updated_at  AS updated_at
+     FROM card_assignees ca
+     JOIN cards c    ON c.id = ca.card_id
+     JOIN boards b   ON b.id = c.board_id
+     JOIN lists  l   ON l.id = c.list_id
+     LEFT JOIN features f ON f.id = b.feature_id
+     WHERE ca.tenant_id = ? AND ca.user_id = ?
+       AND c.archived = 0 AND b.archived = 0 AND l.archived = 0
+     ORDER BY
+       CASE l.kind
+         WHEN 'new' THEN 0
+         WHEN 'wip' THEN 1
+         WHEN 'testing' THEN 2
+         WHEN 'launched' THEN 3
+         ELSE 4
+       END,
+       c.updated_at DESC`,
+    [tenantId, me.id],
+  )
+  return rows.map((r) => ({
+    cardId: r.card_id,
+    cardTitle: r.card_title,
+    boardId: r.board_id,
+    boardName: r.board_name,
+    featureId: r.feature_id ?? undefined,
+    featureName: r.feature_name ?? undefined,
+    listId: r.list_id,
+    listTitle: r.list_title,
+    listKind: r.list_kind,
+    dueAt: r.due_at ?? undefined,
+    etaAt: r.eta_at ?? undefined,
+    updatedAt: r.updated_at,
+  }))
 }
 
 // Internal helpers ------------------------------------------------------------

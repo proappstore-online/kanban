@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@proappstore/sdk'
-import type { Invite, Member, Role, WorkspaceWithRole } from '../types'
+import type { Feature, Invite, Member, Role, WorkspaceWithRole } from '../types'
 import {
+  createFeature,
   createInvite,
+  deleteFeature,
+  listFeatures,
   listInvites,
   listMembers,
   removeMember,
+  renameFeature,
   revokeInvite,
   updateMemberRole,
 } from '../lib/db'
@@ -22,17 +26,47 @@ const ROLES: Role[] = ['owner', 'admin', 'member', 'guest']
 export function Settings({ user, workspace, onBack }: SettingsProps) {
   const [members, setMembers] = useState<Member[] | null>(null)
   const [invites, setInvites] = useState<Invite[] | null>(null)
+  const [features, setFeatures] = useState<Feature[] | null>(null)
+  const [newFeatureName, setNewFeatureName] = useState('')
   const [busy, setBusy] = useState(false)
 
   const canManage = workspace.role === 'owner' || workspace.role === 'admin'
 
   async function refresh() {
-    const [m, i] = await Promise.all([
+    const [m, i, f] = await Promise.all([
       listMembers(workspace.id),
       listInvites(workspace.id),
+      listFeatures(workspace.id),
     ])
     setMembers(m)
     setInvites(i)
+    setFeatures(f)
+  }
+
+  async function handleAddFeature() {
+    const name = newFeatureName.trim()
+    if (!name || !canManage) return
+    const f = await createFeature(workspace.id, name)
+    setFeatures((prev) => (prev ? [...prev, f] : [f]))
+    setNewFeatureName('')
+  }
+
+  async function handleRenameFeature(featureId: string, name: string) {
+    if (!canManage) return
+    await renameFeature(workspace.id, featureId, name)
+    setFeatures((prev) => prev?.map((f) => (f.id === featureId ? { ...f, name } : f)) ?? null)
+  }
+
+  async function handleDeleteFeature(feature: Feature) {
+    if (!canManage) return
+    if (
+      !confirm(
+        `Delete feature "${feature.name}"? Boards under it will become Ungrouped (the boards themselves are not deleted).`,
+      )
+    )
+      return
+    await deleteFeature(workspace.id, feature.id)
+    setFeatures((prev) => prev?.filter((f) => f.id !== feature.id) ?? null)
   }
 
   useEffect(() => {
@@ -201,6 +235,67 @@ export function Settings({ user, workspace, onBack }: SettingsProps) {
                   )}
                 </li>
               ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-10">
+          <SectionHeader>Features</SectionHeader>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Group your boards (epics) by feature — e.g. "Free apps", "Games", "Premium apps".
+            Each board can optionally belong to one feature.
+          </p>
+          {features === null ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">Loading…</p>
+          ) : (
+            <ul className="mt-4 space-y-2">
+              {features.map((f) => (
+                <li
+                  key={f.id}
+                  className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-4 py-3"
+                >
+                  <input
+                    defaultValue={f.name}
+                    readOnly={!canManage}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      if (v && v !== f.name) handleRenameFeature(f.id, v)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                    }}
+                    className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
+                  />
+                  {canManage && (
+                    <button
+                      onClick={() => handleDeleteFeature(f)}
+                      className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </li>
+              ))}
+              {canManage && (
+                <li className="flex items-center gap-3 rounded-2xl border border-dashed border-[var(--line-strong)] bg-[var(--glass)] px-4 py-3">
+                  <input
+                    value={newFeatureName}
+                    onChange={(e) => setNewFeatureName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddFeature()
+                    }}
+                    placeholder="New feature name (e.g. Premium apps)"
+                    className="min-w-0 flex-1 bg-transparent text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
+                  />
+                  <button
+                    onClick={handleAddFeature}
+                    disabled={!newFeatureName.trim()}
+                    className="rounded-full bg-[var(--ink)] px-3 py-1 text-xs font-semibold text-[var(--paper)] disabled:opacity-40"
+                  >
+                    Add
+                  </button>
+                </li>
+              )}
             </ul>
           )}
         </section>

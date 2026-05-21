@@ -30,7 +30,14 @@ export interface Card {
   listId: string
   title: string
   description?: string
+  /** Long-form requirement (what does success look like). */
+  requirement?: string
+  /** Long-form acceptance criteria (how do we know it's done). */
+  acceptanceCriteria?: string
+  /** Hard deadline (PM-set). */
   dueAt?: number
+  /** Engineering best-estimate ship date (separate from `dueAt`). */
+  etaAt?: number
   position: number
   labels: Label[]
   checklist: ChecklistItem[]
@@ -43,11 +50,30 @@ export interface Card {
   version: number
 }
 
+/**
+ * Canonical workflow stages. Each new board auto-seeds one list per stage in
+ * this order; `other` is the implicit kind for any user-added list that
+ * doesn't match a workflow stage. Status pills + the My Tasks cross-board
+ * filter both key off `kind`.
+ */
+export type ListKind = 'new' | 'wip' | 'testing' | 'launched' | 'other'
+
+export const STATUS_KINDS: ListKind[] = ['new', 'wip', 'testing', 'launched']
+
+export const STATUS_LABEL: Record<ListKind, string> = {
+  new: 'New',
+  wip: 'In progress',
+  testing: 'Testing',
+  launched: 'Launched',
+  other: 'Other',
+}
+
 export interface List {
   id: string
   boardId: string
   title: string
   position: number
+  kind: ListKind
   cards: Card[]
 }
 
@@ -55,10 +81,19 @@ export interface Board {
   id: string
   tenantId: string
   name: string
+  featureId?: string
   background?: string
   archived: boolean
   createdAt: number
   updatedAt: number
+}
+
+export interface Feature {
+  id: string
+  tenantId: string
+  name: string
+  sortOrder: number
+  createdAt: number
 }
 
 export interface BoardWithLists extends Board {
@@ -68,6 +103,23 @@ export interface BoardWithLists extends Board {
 export interface BoardSummary {
   id: string
   name: string
+  featureId?: string
+  updatedAt: number
+}
+
+/** A card row that appears in the cross-board "My Tasks" view. */
+export interface AssignedTask {
+  cardId: string
+  cardTitle: string
+  boardId: string
+  boardName: string
+  featureId?: string
+  featureName?: string
+  listId: string
+  listTitle: string
+  listKind: ListKind
+  dueAt?: number
+  etaAt?: number
   updatedAt: number
 }
 

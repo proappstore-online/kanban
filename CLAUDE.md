@@ -41,14 +41,41 @@ before writing or changing anything.
   drawer refetches the last 50 entries with a human-readable summary line.
 - **Comment-count chip** on the card preview.
 
-## v2 (not yet built)
+## v2 (shipped) — PO portfolio model
+
+The PO's working model maps onto Kanban Pro as:
+**Workspace = team → Features (Free apps / Games / Premium apps) → Epics
+(boards, one per app) → Stories (cards).**
+
+- **Features**: top-level groupings inside a workspace (managed in
+  Settings). Boards optionally belong to one feature; the Boards page
+  renders boards bucketed by feature with an "Ungrouped" fallback. Moving a
+  board between features is a hover-dropdown on the card.
+- **Status as list-kind**: every new board auto-seeds four canonical lists
+  — New / In progress / Testing / Launched — each tagged with a stable
+  `kind` column. The list title can be renamed freely; the `kind` persists
+  and drives the colored status pill on card previews + the My Tasks
+  filter. Older boards (or user-added columns) get `kind='other'` and
+  render without a pill.
+- **Requirement & Acceptance Criteria**: two new long-text fields on cards
+  (sitting alongside Description in the modal).
+- **ETA vs Due date**: separate fields. `dueAt` is the hard deadline,
+  `etaAt` is the current best-estimate ship date. When ETA > deadline the
+  ETA chip turns red ("at risk") — the gap between the two is the slip
+  signal.
+- **My Tasks** view (`#/w/<id>/my`): every card across the workspace
+  assigned to the current user, grouped by epic (board) with the parent
+  feature label, filterable by status. SQL does the join and prioritises
+  by `new → wip → testing → launched → other`.
+
+## v3 (not yet built)
 
 - Attachments via `app.storage`.
 - Email invites via `app.notifications.email`.
 - Import-from-FAS button (pull boards from the FAS KV `board:<id>` blobs).
 - Per-board ACL (board-level guest membership).
-- Filter "my cards" across boards.
 - Workspace-level mentions room push (replace 30s polling).
+- Status changes via dropdown on the card preview (without dragging across lists).
 
 ## Architecture
 
