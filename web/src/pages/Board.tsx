@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DndContext, closestCorners } from '@dnd-kit/core'
 import type { User } from '@proappstore/sdk'
 import type {
@@ -60,6 +60,22 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
   const [renamingBoard, setRenamingBoard] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [filter, setFilter] = useState<BoardFilter>(EMPTY_FILTER)
+
+  // Reset per-board UI state when navigating between boards. Without this,
+  // a filter set on board A stays applied when you open board B in the
+  // same Board component instance (React reuses the component across hash
+  // changes since we don't key on boardId at the App.tsx level).
+  useEffect(() => {
+    setFilter(EMPTY_FILTER)
+    setOpenCard(null)
+    setAddingList(false)
+    setRenamingBoard(false)
+  }, [boardId])
+
+  // Guard against double-click on the status pill firing two concurrent
+  // moveCard requests for the same card — second one would race against
+  // the first and leave position math unstable.
+  const movingCardsRef = useRef<Set<string>>(new Set())
 
   const {
     board,
@@ -373,12 +389,15 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     targetKind: import('../types').ListKind,
   ) {
     if (!board) return
+    if (movingCardsRef.current.has(cardId)) return
     const targetList = board.lists.find((l) => l.kind === targetKind)
     if (!targetList || targetList.id === fromListId) return
 
     const sourceList = board.lists.find((l) => l.id === fromListId)
     const card = sourceList?.cards.find((c) => c.id === cardId)
     if (!card) return
+
+    movingCardsRef.current.add(cardId)
 
     // Optimistic local move to the end of the target list.
     setBoard((b) => {
@@ -419,6 +438,8 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
       )
     } catch {
       refetch().catch(() => {})
+    } finally {
+      movingCardsRef.current.delete(cardId)
     }
   }
 

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@proappstore/sdk'
 import type { AssignedTask, ListKind, WorkspaceWithRole } from '../types'
 import { STATUS_KINDS, STATUS_LABEL } from '../types'
-import { getStatusListId, listMyTasks, moveCard } from '../lib/db'
+import { getStatusListId, listMyTasks, logActivity, moveCard } from '../lib/db'
+import { fireBoardPatch } from '../lib/realtime'
 import { TopBar } from '../components/TopBar'
 
 interface MyTasksProps {
@@ -23,7 +24,12 @@ const STATUS_FILTERS: { value: ListKind | 'all'; label: string }[] = [
 export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) {
   const [tasks, setTasks] = useState<AssignedTask[] | null>(null)
   const [filter, setFilter] = useState<ListKind | 'all'>('all')
-  void user
+
+  // Track in-flight moves keyed by cardId so a double-click on the status
+  // dropdown can't fire two concurrent moveCard requests for the same
+  // card. Using a ref so the guard takes effect synchronously without
+  // waiting for a state re-render between clicks.
+  const movingCardsRef = useRef<Set<string>>(new Set())
 
   const refetch = useCallback(() => {
     listMyTasks(workspace.id)
@@ -37,15 +43,43 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
 
   /**
    * Quick-status from a My Tasks row: find the matching list on that card's
-   * board, move the card to the end of it, refetch. Cross-board status
-   * change without leaving the inbox-style view.
+   * board, move the card to the end of it, refetch. Also fire a one-shot
+   * `card.moved` patch into the board's room so peers viewing that board
+   * see the move in realtime — same as a drag-drop would — and write an
+   * activity row so the board's activity feed picks it up. Cross-board
+   * status change without leaving the inbox-style view.
    */
   async function handleChangeStatus(task: AssignedTask, targetKind: ListKind) {
     if (targetKind === task.listKind) return
-    const targetListId = await getStatusListId(workspace.id, task.boardId, targetKind)
-    if (!targetListId) return
-    await moveCard(workspace.id, task.cardId, targetListId, null, null)
-    refetch()
+    if (movingCardsRef.current.has(task.cardId)) return
+    movingCardsRef.current.add(task.cardId)
+    try {
+      const targetListId = await getStatusListId(workspace.id, task.boardId, targetKind)
+      if (!targetListId) return
+      const position = await moveCard(workspace.id, task.cardId, targetListId, null, null)
+      fireBoardPatch(task.boardId, {
+        kind: 'card.moved',
+        cardId: task.cardId,
+        fromListId: task.listId,
+        toListId: targetListId,
+        position,
+      })
+      logActivity(
+        workspace.id,
+        task.boardId,
+        'card.moved',
+        {
+          title: task.cardTitle,
+          from: task.listTitle,
+          to: STATUS_LABEL[targetKind],
+        },
+        task.cardId,
+      ).catch(() => {})
+      fireBoardPatch(task.boardId, { kind: 'activity.added' })
+      refetch()
+    } finally {
+      movingCardsRef.current.delete(task.cardId)
+    }
   }
 
   /**
@@ -202,8 +236,15 @@ function StatusBadge({
     function onDoc(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
   const dotColor = statusDotColor(kind)

@@ -34,6 +34,23 @@ function roomId(boardId: string): string {
 }
 
 /**
+ * One-shot board-room broadcast. Used by callers that aren't subscribed
+ * to a board's room but still need to push a patch to whoever is — e.g.
+ * the My Tasks page changes a card's status; the board's connected peers
+ * should see the move in realtime. Opens a transient connection, sends,
+ * then closes after a short delay (matches the dating app's pattern).
+ */
+export function fireBoardPatch(boardId: string, patch: BoardPatch): void {
+  try {
+    const room = app.rooms.join(roomId(boardId))
+    room.send(patch)
+    setTimeout(() => room.close(), 1500)
+  } catch {
+    /* swallow — realtime is best-effort */
+  }
+}
+
+/**
  * Subscribe to a board's realtime room. Returns:
  * - `peers`     — live list of connected viewers (one entry per browser tab)
  * - `broadcast` — fire-and-forget patch fan-out (use AFTER the D1 write succeeds)
