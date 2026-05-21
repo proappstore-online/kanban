@@ -19,6 +19,11 @@ interface CardModalProps {
     etaAt?: number | null
   }) => void
   onLabelsChange: (labels: Label[]) => void
+  /**
+   * Persist a label's display name. Label names are board-scoped — changing
+   * one updates every card on the board that uses that label.
+   */
+  onRenameLabel: (labelId: string, name: string) => void
   onChecklistChange: (items: ChecklistItem[]) => void
   onAssigneeToggle: (member: Member) => void
   onPostComment: (body: string) => Promise<void> | void
@@ -34,6 +39,7 @@ export function CardModal({
   onClose,
   onSaveBasics,
   onLabelsChange,
+  onRenameLabel,
   onChecklistChange,
   onAssigneeToggle,
   onPostComment,
@@ -99,10 +105,6 @@ export function CardModal({
         { id: crypto.randomUUID(), color, name: '' },
       ])
     }
-  }
-
-  function renameLabel(color: LabelColor, name: string) {
-    onLabelsChange(card.labels.map((l) => (l.color === color ? { ...l, name } : l)))
   }
 
   function addChecklistItem() {
@@ -183,20 +185,13 @@ export function CardModal({
         </div>
         {card.labels.length > 0 && (
           <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-            {card.labels.map((l) => {
-              const s = labelStyles(l.color)
-              return (
-                <input
-                  key={l.id}
-                  value={l.name}
-                  onChange={(e) => renameLabel(l.color, e.target.value)}
-                  placeholder={`Name this ${l.color} label`}
-                  className="rounded-full border border-[var(--line)] px-3 py-1 text-[11px] outline-none focus:border-[var(--line-strong)]"
-                  style={{ background: s.bg + '40', color: s.fg }}
-                  maxLength={28}
-                />
-              )
-            })}
+            {card.labels.map((l) => (
+              <LabelNameInput
+                key={l.id}
+                label={l}
+                onRename={(name) => onRenameLabel(l.id, name)}
+              />
+            ))}
           </div>
         )}
 
@@ -357,6 +352,54 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div className="mt-5 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
       {children}
     </div>
+  )
+}
+
+/**
+ * Local-draft input for renaming a board-scoped label. We don't propagate
+ * every keystroke up to the persist layer — that would issue one DB write
+ * per character. Instead, draft locally and fire `onRename` once on blur or
+ * Enter, then only if the value has actually changed.
+ */
+function LabelNameInput({
+  label,
+  onRename,
+}: {
+  label: Label
+  onRename: (name: string) => void
+}) {
+  const [draft, setDraft] = useState(label.name)
+  // Keep the draft in sync with the persisted value when it changes
+  // remotely (e.g. another teammate renamed the label).
+  useEffect(() => {
+    setDraft(label.name)
+  }, [label.name])
+
+  const s = labelStyles(label.color)
+
+  function commit() {
+    const next = draft.trim().slice(0, 28)
+    if (next === label.name) return
+    onRename(next)
+  }
+
+  return (
+    <input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+        if (e.key === 'Escape') {
+          setDraft(label.name)
+          ;(e.currentTarget as HTMLInputElement).blur()
+        }
+      }}
+      placeholder={`Name this ${label.color} label`}
+      className="rounded-full border border-[var(--line)] px-3 py-1 text-[11px] outline-none focus:border-[var(--line-strong)]"
+      style={{ background: s.bg + '40', color: s.fg }}
+      maxLength={28}
+    />
   )
 }
 

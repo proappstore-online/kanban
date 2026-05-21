@@ -23,6 +23,7 @@ import {
   logActivity,
   removeAssignee,
   renameBoard,
+  renameBoardLabel,
   renameList,
   setCardLabels,
   setChecklist,
@@ -227,6 +228,18 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
       .filter((x): x is string => !!x)
     await setCardLabels(workspace.id, cardId, ids)
     broadcast({ kind: 'card.labels-changed', cardId })
+  }
+
+  /**
+   * Persist a label's display name. Names are board-scoped, so this can
+   * change other cards' previews too — we refetch the whole board to pick
+   * up the rename across every chip rendered for that label.
+   */
+  async function handleRenameLabel(labelId: string, name: string) {
+    if (!board) return
+    await renameBoardLabel(workspace.id, labelId, name)
+    broadcast({ kind: 'card.labels-changed', cardId: '' })
+    refetch().catch(() => {})
   }
 
   async function handleChecklistChange(
@@ -463,6 +476,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
           onClose={() => setOpenCard(null)}
           onSaveBasics={(patch) => handleSaveBasics(open.id, openCard.listId, patch)}
           onLabelsChange={(labels) => handleLabelsChange(open.id, openCard.listId, labels)}
+          onRenameLabel={handleRenameLabel}
           onChecklistChange={(items) => handleChecklistChange(open.id, openCard.listId, items)}
           onAssigneeToggle={(member) => handleAssigneeToggle(open.id, openCard.listId, member)}
           onPostComment={(body) => handlePostComment(open.id, body)}

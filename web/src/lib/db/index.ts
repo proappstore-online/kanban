@@ -54,6 +54,7 @@ export {
   addAssignee,
   removeAssignee,
   ensureBoardLabels,
+  renameBoardLabel,
   setCardLabels,
   setChecklist,
 } from './cards'

@@ -185,6 +185,23 @@ export async function ensureBoardLabels(
   return after.map((r) => ({ id: r.id, color: r.color, name: r.name }))
 }
 
+/**
+ * Rename a board-scoped label. The name is shared across every card that
+ * uses the label on this board — Trello semantics. Idempotent: setting the
+ * same name is a no-op write.
+ */
+export async function renameBoardLabel(
+  tenantId: string,
+  labelId: string,
+  name: string,
+): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE labels SET name = ? WHERE id = ? AND tenant_id = ?`,
+    [name, labelId, tenantId],
+  )
+}
+
 export async function setCardLabels(
   tenantId: string,
   cardId: string,
