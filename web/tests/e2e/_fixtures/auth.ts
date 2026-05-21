@@ -11,7 +11,7 @@ import type { Page } from '@playwright/test'
  *  - `auth.init()` reads it, then validates by hitting `/v1/auth/me`.
  *  - If that 401s, the session is cleared and the user is logged out.
  *
- * Data worker model (per-app, currently `pas-data-kanban` on workers.dev):
+ * Data worker model (per-app, currently `data-<appId>.proappstore.online`):
  *  - POST /migrate → run schema migrations (idempotent server-side)
  *  - POST /query   → SELECT, returns `{ rows: T[] }`
  *  - POST /execute → INSERT/UPDATE/DELETE, returns `{ ... }`
@@ -33,6 +33,25 @@ const FAKE_TOKEN = 'fake-test-session-token'
 
 const STORAGE_KEY = 'fas:session'
 
+export interface RecordedCall {
+  sql: string
+  params: unknown[]
+}
+
+/**
+ * Handle returned from `signInAs`. Tests assert mutations by inspecting
+ * `queries` (SELECTs) and `executes` (INSERT/UPDATE/DELETE) — every call
+ * the SDK makes to the data worker is recorded here in order.
+ *
+ * Use `executes.some(e => /INSERT INTO cards/.test(e.sql))` to assert
+ * "the user action triggered a card insert" without coupling to exact
+ * column order, generated IDs, or timing.
+ */
+export interface FixtureHandle {
+  queries: RecordedCall[]
+  executes: RecordedCall[]
+}
+
 /**
  * Pre-seed a logged-in session and stub the auth + data worker
  * endpoints. Call from `test.beforeEach(...)` before `page.goto(...)`.
@@ -40,6 +59,9 @@ const STORAGE_KEY = 'fas:session'
  * `queryResponses` lets a test override the default empty
  * `listMyWorkspaces` response by SQL substring match. Useful for
  * priming the app with a workspace, board, etc.
+ *
+ * Returns a FixtureHandle for assertion-style tests; ignoring it is
+ * fine for read-only render tests.
  */
 export async function signInAs(
   page: Page,
@@ -47,9 +69,10 @@ export async function signInAs(
   opts: {
     queryResponses?: { match: RegExp; rows: unknown[] }[]
   } = {},
-): Promise<void> {
+): Promise<FixtureHandle> {
   const resolved = { ...FAKE_USER, ...user }
   const queryResponses = opts.queryResponses ?? []
+  const handle: FixtureHandle = { queries: [], executes: [] }
 
   // Seed the session in localStorage BEFORE the page loads. Using a
   // string init-script (not a function with args) because the arg-passing
@@ -80,9 +103,8 @@ export async function signInAs(
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   })
 
-  // Data worker: migrate, query, execute. The SDK uses
-  // `data-<appId>.proappstore.online` by default; if a test setup overrides
-  // `dataApiBase` to the workers.dev hostname, add that pattern too.
+  // Data worker: migrate, query, execute. Every query + execute is
+  // recorded into `handle` so tests can assert mutations after the fact.
   await page.route('**/data-kanban.proappstore.online/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/migrate')) {
@@ -93,13 +115,14 @@ export async function signInAs(
       })
     }
     if (url.pathname.endsWith('/query')) {
-      let body: { sql?: string } = {}
+      let body: { sql?: string; params?: unknown[] } = {}
       try {
-        body = (await route.request().postDataJSON()) as { sql?: string }
+        body = (await route.request().postDataJSON()) as typeof body
       } catch {
         /* ignore */
       }
       const sql = body.sql ?? ''
+      handle.queries.push({ sql, params: body.params ?? [] })
       for (const { match, rows } of queryResponses) {
         if (match.test(sql)) {
           return route.fulfill({
@@ -117,6 +140,13 @@ export async function signInAs(
       })
     }
     if (url.pathname.endsWith('/execute')) {
+      let body: { sql?: string; params?: unknown[] } = {}
+      try {
+        body = (await route.request().postDataJSON()) as typeof body
+      } catch {
+        /* ignore */
+      }
+      handle.executes.push({ sql: body.sql ?? '', params: body.params ?? [] })
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -125,4 +155,14 @@ export async function signInAs(
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   })
+
+  return handle
+}
+
+/**
+ * Convenience: did any recorded SQL match this regex? Used in tests as
+ * `expect(sawSQL(handle.executes, /INSERT INTO cards/)).toBe(true)`.
+ */
+export function sawSQL(calls: RecordedCall[], match: RegExp): boolean {
+  return calls.some((c) => match.test(c.sql))
 }
