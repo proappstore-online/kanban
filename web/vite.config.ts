@@ -59,5 +59,8 @@ export default defineConfig({
       },
     }),
   ],
-  server: { host: true },
+  // Dedicated port so concurrent sibling-app dev servers don't collide
+  // (e.g. loopride / dating / wellness on 5173, 5174…). Tests also key
+  // off this — see playwright.config.ts.
+  server: { host: true, port: 5181, strictPort: true },
 });

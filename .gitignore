@@ -9,3 +9,8 @@ dist
 
 # VibeCodeQA report output — scanner-generated artifacts, not source
 .vibe-check/
+
+# Playwright artifacts
+web/test-results/
+web/playwright-report/
+web/playwright/.cache/
