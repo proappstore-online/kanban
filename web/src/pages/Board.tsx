@@ -1,22 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  closestCorners,
-  type DragEndEvent,
-  type DragOverEvent,
-} from '@dnd-kit/core'
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { useState } from 'react'
+import { DndContext, closestCorners } from '@dnd-kit/core'
 import type { User } from '@proappstore/sdk'
 import type {
-  ActivityEntry,
-  BoardWithLists,
+  ActivityKind,
   Card,
   ChecklistItem,
-  Comment,
   Label,
   LabelColor,
   List,
@@ -32,12 +20,7 @@ import {
   deleteComment,
   deleteList,
   ensureBoardLabels,
-  getBoardFull,
-  listBoardActivity,
-  listComments,
-  listMembers,
   logActivity,
-  moveCard,
   removeAssignee,
   renameBoard,
   renameList,
@@ -45,13 +28,14 @@ import {
   setChecklist,
   updateCard,
 } from '../lib/db'
-import { useBoardRoom, type BoardPatch } from '../lib/realtime'
 import { TopBar } from '../components/TopBar'
 import { ListColumn } from '../components/ListColumn'
 import { CardModal } from '../components/CardModal'
 import { PresenceBar } from '../components/PresenceBar'
 import { ActivityPanel } from '../components/ActivityPanel'
 import { MentionsBell } from '../components/MentionsBell'
+import { useBoardData } from './board/useBoardData'
+import { useBoardDragDrop } from './board/useBoardDragDrop'
 
 interface BoardProps {
   boardId: string
@@ -61,253 +45,55 @@ interface BoardProps {
 }
 
 export function Board({ boardId, user, workspace, onBack }: BoardProps) {
-  const [board, setBoard] = useState<BoardWithLists | null | undefined>(undefined)
-  const [members, setMembers] = useState<Member[]>([])
+  // Local UI state — anything else lives in the data hook.
   const [openCard, setOpenCard] = useState<{ cardId: string; listId: string } | null>(null)
-  const [openCardComments, setOpenCardComments] = useState<Comment[]>([])
   const [addingList, setAddingList] = useState(false)
   const [newListTitle, setNewListTitle] = useState('')
   const [renamingBoard, setRenamingBoard] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
-  const [showActivity, setShowActivity] = useState(false)
-  const [activity, setActivity] = useState<ActivityEntry[]>([])
 
-  const refetch = useCallback(async () => {
-    const next = await getBoardFull(workspace.id, boardId)
-    setBoard(next)
-  }, [workspace.id, boardId])
+  const {
+    board,
+    setBoard,
+    members,
+    openCardComments,
+    setOpenCardComments,
+    activity,
+    showActivity,
+    setShowActivity,
+    refetchActivity,
+    peers,
+    broadcast,
+    refetch,
+  } = useBoardData(workspace.id, boardId, openCard?.cardId ?? null)
 
-  // Initial load + members.
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([getBoardFull(workspace.id, boardId), listMembers(workspace.id)])
-      .then(([b, m]) => {
-        if (cancelled) return
-        setBoard(b)
-        setMembers(m)
-      })
-      .catch(() => {
-        if (!cancelled) setBoard(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace.id, boardId])
-
-  // Load comments when a card opens. Re-fetched on demand when realtime
-  // patches indicate a remote comment change for the same card.
-  const openCardId = openCard?.cardId ?? null
-  useEffect(() => {
-    if (!openCardId) {
-      setOpenCardComments([])
-      return
-    }
-    let cancelled = false
-    listComments(workspace.id, openCardId)
-      .then((cs) => {
-        if (!cancelled) setOpenCardComments(cs)
-      })
-      .catch(() => {
-        if (!cancelled) setOpenCardComments([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace.id, openCardId])
-
-  // Activity feed: fetched when the panel is opened, then refetched on
-  // any board mutation that broadcasts `activity.added`.
-  const refetchActivity = useCallback(async () => {
-    const a = await listBoardActivity(workspace.id, boardId, 50)
-    setActivity(a)
-  }, [workspace.id, boardId])
-  useEffect(() => {
-    if (!showActivity) return
-    refetchActivity().catch(() => {})
-  }, [showActivity, refetchActivity])
-
-  // Realtime: apply incoming patches by either patching local state directly
-  // for the trivial cases (board rename, list rename) or refetching the whole
-  // board for anything structural. v1 trade: simpler + always correct. We can
-  // downgrade to surgical patches later.
-  const handlePatch = useCallback(
-    (patch: BoardPatch) => {
-      switch (patch.kind) {
-        case 'board.renamed':
-          setBoard((b) => (b ? { ...b, name: patch.name } : b))
-          return
-        case 'list.renamed':
-          setBoard((b) => {
-            if (!b) return b
-            return {
-              ...b,
-              lists: b.lists.map((l) => (l.id === patch.listId ? { ...l, title: patch.title } : l)),
-            }
-          })
-          return
-        case 'card.comment-added':
-        case 'card.comment-deleted':
-          // Refetch comments for the open card (if it matches) and bump
-          // the board's per-card comment count by re-running getBoardFull.
-          if (openCardId === patch.cardId) {
-            listComments(workspace.id, patch.cardId)
-              .then(setOpenCardComments)
-              .catch(() => {})
-          }
-          refetch().catch(() => {})
-          return
-        case 'activity.added':
-          if (showActivity) refetchActivity().catch(() => {})
-          return
-        default:
-          refetch().catch(() => {})
-      }
-    },
-    [refetch, refetchActivity, openCardId, showActivity, workspace.id],
-  )
-
-  const { peers, broadcast } = useBoardRoom(boardId, handlePatch)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
-
-  // The originating list of an in-flight drag, captured at drag-over time so
-  // the drop handler can broadcast a `card.moved` even when the card returns
-  // to its original list at a new index.
-  const dragOriginRef = useRef<{ cardId: string; fromListId: string } | null>(null)
-
-  function findListByCardId(b: BoardWithLists, cardId: string): List | undefined {
-    return b.lists.find((l) => l.cards.some((c) => c.id === cardId))
-  }
-
-  function handleDragOver(event: DragOverEvent) {
-    const { active, over } = event
-    if (!over || !board) return
-    const activeId = String(active.id)
-    const overId = String(over.id)
-    if (activeId === overId) return
-
-    setBoard((prev) => {
-      if (!prev) return prev
-      const fromList = findListByCardId(prev, activeId)
-      if (!fromList) return prev
-      if (!dragOriginRef.current) {
-        dragOriginRef.current = { cardId: activeId, fromListId: fromList.id }
-      }
-
-      let toListId: string
-      let toIndex: number
-      if (overId.startsWith('list:')) {
-        toListId = overId.slice(5)
-        const toList = prev.lists.find((l) => l.id === toListId)
-        if (!toList) return prev
-        toIndex = toList.cards.length
-      } else {
-        const toList = findListByCardId(prev, overId)
-        if (!toList) return prev
-        toListId = toList.id
-        toIndex = toList.cards.findIndex((c) => c.id === overId)
-      }
-
-      if (fromList.id === toListId) return prev
-
-      const next = structuredClone(prev) as BoardWithLists
-      const from = next.lists.find((l) => l.id === fromList.id)!
-      const to = next.lists.find((l) => l.id === toListId)!
-      const idx = from.cards.findIndex((c) => c.id === activeId)
-      const [card] = from.cards.splice(idx, 1)
-      card.listId = toListId
-      to.cards.splice(toIndex, 0, card)
-      return next
-    })
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    const activeId = String(active.id)
-    const overId = over ? String(over.id) : null
-    const origin = dragOriginRef.current
-    dragOriginRef.current = null
-
-    // Compute the final in-memory state synchronously: apply any same-list
-    // reorder, then derive what to persist from the resulting snapshot.
-    // Done this way (rather than two `setBoard` calls with an async write
-    // nested inside one of them) because firing an async DB call from
-    // inside a state-updater closure produces races: a remote realtime
-    // patch can interleave between the updater and the .then() callback,
-    // and `fromListId` captured at the start ends up reflecting a stale
-    // view of the board. Compute → setState → persist in clear phases.
+  /**
+   * Write an activity row (fire-and-forget) and broadcast an
+   * `activity.added` patch so any open activity drawer refreshes. Kept
+   * inline so each mutation site is a single call.
+   */
+  function logAndAnnounce(
+    kind: ActivityKind,
+    payload: Record<string, unknown>,
+    cardId?: string,
+  ) {
     if (!board) return
-    let snapshot: BoardWithLists = board
-    if (overId && !overId.startsWith('list:')) {
-      const fromList = findListByCardId(snapshot, activeId)
-      const overList = findListByCardId(snapshot, overId)
-      if (fromList && overList && overList.id === fromList.id) {
-        const oldIndex = fromList.cards.findIndex((c) => c.id === activeId)
-        const newIndex = fromList.cards.findIndex((c) => c.id === overId)
-        if (oldIndex !== newIndex) {
-          snapshot = structuredClone(snapshot) as BoardWithLists
-          const list = snapshot.lists.find((l) => l.id === fromList.id)!
-          list.cards = arrayMove(list.cards, oldIndex, newIndex)
-        }
-      }
-    }
-
-    const listForActive = findListByCardId(snapshot, activeId)
-    if (!listForActive) {
-      // Active card vanished mid-drag (e.g. remote delete). Reconcile.
-      setBoard(snapshot)
-      refetch().catch(() => {})
-      return
-    }
-    const idx = listForActive.cards.findIndex((c) => c.id === activeId)
-    const prevPos = idx > 0 ? listForActive.cards[idx - 1].position : null
-    const nextPos =
-      idx < listForActive.cards.length - 1 ? listForActive.cards[idx + 1].position : null
-    const fromListId = origin?.fromListId ?? listForActive.id
-    const movedAcross = fromListId !== listForActive.id
-    const neighboursUnchanged =
-      !movedAcross && prevPos === null && nextPos === null && listForActive.cards.length === 1
-
-    setBoard(snapshot)
-    if (neighboursUnchanged) return
-
-    const fromListTitle = snapshot.lists.find((l) => l.id === fromListId)?.title
-    const toListTitle = listForActive.title
-    const movedCardTitle = listForActive.cards.find((c) => c.id === activeId)?.title
-
-    moveCard(workspace.id, activeId, listForActive.id, prevPos, nextPos)
-      .then((position) => {
-        setBoard((b) => {
-          if (!b) return b
-          const next = structuredClone(b) as BoardWithLists
-          const l = findListByCardId(next, activeId)
-          const c = l?.cards.find((c) => c.id === activeId)
-          if (c) c.position = position
-          return next
-        })
-        broadcast({
-          kind: 'card.moved',
-          cardId: activeId,
-          fromListId,
-          toListId: listForActive.id,
-          position,
-        })
-        if (movedAcross) {
-          logAndAnnounce(
-            'card.moved',
-            { title: movedCardTitle, from: fromListTitle, to: toListTitle },
-            activeId,
-          )
-        }
-      })
-      .catch(() => {
-        refetch().catch(() => {})
-      })
+    logActivity(workspace.id, board.id, kind, payload, cardId).catch(() => {})
+    broadcast({ kind: 'activity.added' })
+    if (showActivity) refetchActivity().catch(() => {})
   }
 
+  const { sensors, handleDragOver, handleDragEnd } = useBoardDragDrop({
+    tenantId: workspace.id,
+    board,
+    setBoard,
+    refetch,
+    broadcast,
+    onMovedAcross: (cardId, title, from, to) =>
+      logAndAnnounce('card.moved', { title, from, to }, cardId),
+  })
+
+  // Loading / not-found guards before the mutation handlers reference `board`.
   if (board === undefined) {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
@@ -315,7 +101,6 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
       </div>
     )
   }
-
   if (board === null) {
     return (
       <div className="min-h-[100dvh]">
@@ -326,6 +111,8 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
       </div>
     )
   }
+
+  // Mutation handlers ---------------------------------------------------------
 
   async function commitAddList() {
     if (!board) return
@@ -370,10 +157,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
   async function handleRenameList(listId: string, title: string) {
     setBoard((b) => {
       if (!b) return b
-      return {
-        ...b,
-        lists: b.lists.map((l) => (l.id === listId ? { ...l, title } : l)),
-      }
+      return { ...b, lists: b.lists.map((l) => (l.id === listId ? { ...l, title } : l)) }
     })
     await renameList(workspace.id, listId, title)
     broadcast({ kind: 'list.renamed', listId, title })
@@ -382,29 +166,10 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
 
   async function handleDeleteList(listId: string) {
     const list = board?.lists.find((l) => l.id === listId)
-    setBoard((b) => {
-      if (!b) return b
-      return { ...b, lists: b.lists.filter((l) => l.id !== listId) }
-    })
+    setBoard((b) => (b ? { ...b, lists: b.lists.filter((l) => l.id !== listId) } : b))
     await deleteList(workspace.id, listId)
     broadcast({ kind: 'list.deleted', listId })
     logAndAnnounce('list.deleted', { listId, title: list?.title })
-  }
-
-  /**
-   * Convenience: write an activity row (fire-and-forget) AND broadcast an
-   * `activity.added` patch so anyone with the activity panel open refreshes.
-   * Kept inline here so each mutation site is a single call.
-   */
-  function logAndAnnounce(
-    kind: import('../types').ActivityKind,
-    payload: Record<string, unknown>,
-    cardId?: string,
-  ) {
-    if (!board) return
-    logActivity(workspace.id, board.id, kind, payload, cardId).catch(() => {})
-    broadcast({ kind: 'activity.added' })
-    if (showActivity) refetchActivity().catch(() => {})
   }
 
   function updateCardLocal(cardId: string, listId: string, patch: Partial<Card>) {
@@ -427,26 +192,29 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
   async function handleSaveBasics(
     cardId: string,
     listId: string,
-    patch: { title?: string; description?: string | null; dueAt?: number | null },
+    patch: {
+      title?: string
+      description?: string | null
+      requirement?: string | null
+      acceptanceCriteria?: string | null
+      dueAt?: number | null
+      etaAt?: number | null
+    },
   ) {
     updateCardLocal(cardId, listId, {
       ...(patch.title !== undefined && { title: patch.title }),
-      ...(patch.description !== undefined && {
-        description: patch.description ?? undefined,
+      ...(patch.description !== undefined && { description: patch.description ?? undefined }),
+      ...(patch.requirement !== undefined && { requirement: patch.requirement ?? undefined }),
+      ...(patch.acceptanceCriteria !== undefined && {
+        acceptanceCriteria: patch.acceptanceCriteria ?? undefined,
       }),
       ...(patch.dueAt !== undefined && { dueAt: patch.dueAt ?? undefined }),
+      ...(patch.etaAt !== undefined && { etaAt: patch.etaAt ?? undefined }),
     })
     await updateCard(workspace.id, cardId, patch)
     broadcast({ kind: 'card.updated', cardId })
     const card = board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)
-    logAndAnnounce(
-      'card.updated',
-      {
-        title: card?.title,
-        changed: Object.keys(patch),
-      },
-      cardId,
-    )
+    logAndAnnounce('card.updated', { title: card?.title, changed: Object.keys(patch) }, cardId)
   }
 
   async function handleLabelsChange(cardId: string, listId: string, labels: Label[]) {
@@ -499,7 +267,6 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     if (!board) return
     const result = await addComment(workspace.id, board.id, cardId, body, members)
     setOpenCardComments((prev) => [...prev, result.comment])
-    // Bump local comment-count chip on the card preview.
     setBoard((b) => {
       if (!b) return b
       return {
@@ -613,7 +380,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
               workspaceId={workspace.id}
               onOpenCard={(cardId, targetBoardId) => {
                 if (targetBoardId !== boardId) {
-                  location.hash = `#/w/${workspace.id}/board/${targetBoardId}`
+                  location.hash = `#/w/${workspace.slug}/board/${targetBoardId}`
                   return
                 }
                 const target = board?.lists.find((l) => l.cards.some((c) => c.id === cardId))
@@ -696,9 +463,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
           onClose={() => setOpenCard(null)}
           onSaveBasics={(patch) => handleSaveBasics(open.id, openCard.listId, patch)}
           onLabelsChange={(labels) => handleLabelsChange(open.id, openCard.listId, labels)}
-          onChecklistChange={(items) =>
-            handleChecklistChange(open.id, openCard.listId, items)
-          }
+          onChecklistChange={(items) => handleChecklistChange(open.id, openCard.listId, items)}
           onAssigneeToggle={(member) => handleAssigneeToggle(open.id, openCard.listId, member)}
           onPostComment={(body) => handlePostComment(open.id, body)}
           onDeleteComment={(commentId) => handleDeleteComment(open.id, commentId)}
