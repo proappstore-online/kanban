@@ -4,6 +4,7 @@ import type { AssignedTask, ListKind, WorkspaceWithRole } from '../types'
 import { STATUS_KINDS, STATUS_LABEL } from '../types'
 import { getStatusListId, listMyTasks, logActivity, moveCard } from '../lib/db'
 import { fireBoardPatch } from '../lib/realtime'
+import { toast } from '../lib/toast'
 import { TopBar } from '../components/TopBar'
 
 interface MyTasksProps {
@@ -55,7 +56,12 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
     movingCardsRef.current.add(task.cardId)
     try {
       const targetListId = await getStatusListId(workspace.id, task.boardId, targetKind)
-      if (!targetListId) return
+      if (!targetListId) {
+        toast.error(
+          `${STATUS_LABEL[targetKind]} list missing on "${task.boardName}". Recreate it on the board.`,
+        )
+        return
+      }
       const position = await moveCard(workspace.id, task.cardId, targetListId, null, null)
       fireBoardPatch(task.boardId, {
         kind: 'card.moved',
@@ -77,6 +83,9 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
       ).catch(() => {})
       fireBoardPatch(task.boardId, { kind: 'activity.added' })
       refetch()
+      toast.success(`Moved "${task.cardTitle}" to ${STATUS_LABEL[targetKind]}.`)
+    } catch {
+      toast.error("Couldn't change status — try again.")
     } finally {
       movingCardsRef.current.delete(task.cardId)
     }

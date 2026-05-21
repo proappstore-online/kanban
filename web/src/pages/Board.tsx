@@ -41,6 +41,7 @@ import { PresenceBar } from '../components/PresenceBar'
 import { ActivityPanel } from '../components/ActivityPanel'
 import { ArchivedPanel } from '../components/ArchivedPanel'
 import { MentionsBell } from '../components/MentionsBell'
+import { toast } from '../lib/toast'
 import {
   BoardFilters,
   EMPTY_FILTER,
@@ -357,31 +358,36 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
 
   async function handlePostComment(cardId: string, body: string) {
     if (!board) return
-    const result = await addComment(workspace.id, board.id, cardId, body, members)
-    setOpenCardComments((prev) => [...prev, result.comment])
-    setBoard((b) => {
-      if (!b) return b
-      return {
-        ...b,
-        lists: b.lists.map((l) => ({
-          ...l,
-          cards: l.cards.map((c) =>
-            c.id === cardId ? { ...c, commentCount: c.commentCount + 1 } : c,
-          ),
-        })),
-      }
-    })
-    broadcast({ kind: 'card.comment-added', cardId })
-    const card = board.lists.flatMap((l) => l.cards).find((c) => c.id === cardId)
-    logAndAnnounce(
-      'comment.added',
-      {
-        cardTitle: card?.title,
-        snippet: body.length > 80 ? body.slice(0, 80) + '…' : body,
-        mentioned: result.mentionedUserIds.length,
-      },
-      cardId,
-    )
+    try {
+      const result = await addComment(workspace.id, board.id, cardId, body, members)
+      setOpenCardComments((prev) => [...prev, result.comment])
+      setBoard((b) => {
+        if (!b) return b
+        return {
+          ...b,
+          lists: b.lists.map((l) => ({
+            ...l,
+            cards: l.cards.map((c) =>
+              c.id === cardId ? { ...c, commentCount: c.commentCount + 1 } : c,
+            ),
+          })),
+        }
+      })
+      broadcast({ kind: 'card.comment-added', cardId })
+      const card = board.lists.flatMap((l) => l.cards).find((c) => c.id === cardId)
+      logAndAnnounce(
+        'comment.added',
+        {
+          cardTitle: card?.title,
+          snippet: body.length > 80 ? body.slice(0, 80) + '…' : body,
+          mentioned: result.mentionedUserIds.length,
+        },
+        cardId,
+      )
+    } catch {
+      toast.error("Couldn't post comment — try again.")
+      throw new Error('post comment failed') // re-throw so CommentsSection keeps the draft
+    }
   }
 
   async function handleDeleteComment(cardId: string, commentId: string) {
@@ -415,20 +421,32 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       }
     })
     setOpenCard(null)
-    await archiveCard(workspace.id, cardId)
-    // Same patch shape as a delete on the wire — peers drop the card
-    // either way; their next open of the Archived panel will refetch.
-    broadcast({ kind: 'card.deleted', cardId, listId })
-    logAndAnnounce('card.archived', { title: card?.title }, cardId)
-    setArchivedCards(null) // bust cache so the panel refetches on next open
+    try {
+      await archiveCard(workspace.id, cardId)
+      // Same patch shape as a delete on the wire — peers drop the card
+      // either way; their next open of the Archived panel will refetch.
+      broadcast({ kind: 'card.deleted', cardId, listId })
+      logAndAnnounce('card.archived', { title: card?.title }, cardId)
+      setArchivedCards(null) // bust cache so the panel refetches on next open
+      toast.success(`Archived "${card?.title ?? 'card'}" — open Archived to restore.`)
+    } catch {
+      toast.error("Couldn't archive the card — reloading to be safe.")
+      refetch().catch(() => {})
+    }
   }
 
   /** Restore from the Archived panel. */
   async function handleRestoreCard(cardId: string) {
-    await unarchiveCard(workspace.id, cardId)
-    broadcast({ kind: 'card.created', cardId, listId: '' })
-    refetch().catch(() => {})
-    refetchArchived().catch(() => {})
+    const archived = archivedCards?.find((c) => c.id === cardId)
+    try {
+      await unarchiveCard(workspace.id, cardId)
+      broadcast({ kind: 'card.created', cardId, listId: '' })
+      refetch().catch(() => {})
+      refetchArchived().catch(() => {})
+      toast.success(`Restored "${archived?.title ?? 'card'}".`)
+    } catch {
+      toast.error("Couldn't restore — try again.")
+    }
   }
 
   /** Hard delete — irreversible. Used by CardModal "Delete forever" and
@@ -445,18 +463,30 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       }
     })
     setOpenCard(null)
-    await deleteCard(workspace.id, cardId)
-    broadcast({ kind: 'card.deleted', cardId, listId })
-    logAndAnnounce('card.deleted', { title: card?.title }, cardId)
-    setArchivedCards(null)
+    try {
+      await deleteCard(workspace.id, cardId)
+      broadcast({ kind: 'card.deleted', cardId, listId })
+      logAndAnnounce('card.deleted', { title: card?.title }, cardId)
+      setArchivedCards(null)
+      toast.info(`Permanently deleted "${card?.title ?? 'card'}".`)
+    } catch {
+      toast.error("Couldn't delete — reloading to be safe.")
+      refetch().catch(() => {})
+    }
   }
 
   /** Delete-forever from the Archived panel — same DB op but no
    * listId is known up-front; the panel passes the card row to refresh. */
   async function handleDeleteForever(cardId: string) {
-    await deleteCard(workspace.id, cardId)
-    broadcast({ kind: 'card.deleted', cardId, listId: '' })
-    refetchArchived().catch(() => {})
+    const archived = archivedCards?.find((c) => c.id === cardId)
+    try {
+      await deleteCard(workspace.id, cardId)
+      broadcast({ kind: 'card.deleted', cardId, listId: '' })
+      refetchArchived().catch(() => {})
+      toast.info(`Permanently deleted "${archived?.title ?? 'card'}".`)
+    } catch {
+      toast.error("Couldn't delete — try again.")
+    }
   }
 
   const open = openCard
@@ -532,6 +562,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         cardId,
       )
     } catch {
+      toast.error("Couldn't change status — reloading.")
       refetch().catch(() => {})
     } finally {
       movingCardsRef.current.delete(cardId)

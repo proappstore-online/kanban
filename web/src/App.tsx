@@ -11,6 +11,7 @@ import { MyTasks } from './pages/MyTasks'
 import { AcceptInvite } from './pages/AcceptInvite'
 import { listMyWorkspaces } from './lib/db'
 import type { WorkspaceWithRole } from './types'
+import { Toasts } from './components/Toasts'
 
 /**
  * Hash routes use a `workspaceRef` that can be either a slug
@@ -121,120 +122,131 @@ export default function App() {
     setRoute(parseHash())
   }, [workspaces, route])
 
-  if (!ready) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
-        Loading…
-      </div>
-    )
-  }
-  if (!user) return <SignIn />
+  // Compute the per-route page content, then wrap with Toasts so the
+  // notification stack is mounted exactly once and survives across
+  // hash-only route changes.
+  const content = (() => {
+    if (!ready) {
+      return (
+        <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
+          Loading…
+        </div>
+      )
+    }
+    if (!user) return <SignIn />
 
-  // Invite route is reachable before workspace membership is known.
-  if (route.name === 'invite') {
-    return (
-      <AcceptInvite
-        code={route.code}
-        onJoined={(ws) => {
-          location.hash = `#/w/${ws.slug}`
-        }}
-      />
-    )
-  }
+    if (route.name === 'invite') {
+      return (
+        <AcceptInvite
+          code={route.code}
+          onJoined={(ws) => {
+            location.hash = `#/w/${ws.slug}`
+          }}
+        />
+      )
+    }
 
-  if (workspaces === null) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
-        Loading…
-      </div>
-    )
-  }
+    if (workspaces === null) {
+      return (
+        <div className="flex min-h-[100dvh] items-center justify-center text-[var(--muted)]">
+          Loading…
+        </div>
+      )
+    }
 
-  if (workspaces.length === 0) {
-    return (
-      <Onboarding
-        user={user}
-        onCreated={(ws) => {
-          setWorkspaces([{ ...ws, role: 'owner' }])
-          location.hash = `#/w/${ws.slug}`
-        }}
-      />
-    )
-  }
+    if (workspaces.length === 0) {
+      return (
+        <Onboarding
+          user={user}
+          onCreated={(ws) => {
+            setWorkspaces([{ ...ws, role: 'owner' }])
+            location.hash = `#/w/${ws.slug}`
+          }}
+        />
+      )
+    }
 
-  if (route.name === 'workspaces') {
-    return (
-      <Workspaces
-        user={user}
-        workspaces={workspaces}
-        onOpen={(slug) => (location.hash = `#/w/${slug}`)}
-        onCreated={(ws) => {
-          setWorkspaces((prev) => [{ ...ws, role: 'owner' }, ...(prev ?? [])])
-          location.hash = `#/w/${ws.slug}`
-        }}
-      />
-    )
-  }
+    if (route.name === 'workspaces') {
+      return (
+        <Workspaces
+          user={user}
+          workspaces={workspaces}
+          onOpen={(slug) => (location.hash = `#/w/${slug}`)}
+          onCreated={(ws) => {
+            setWorkspaces((prev) => [{ ...ws, role: 'owner' }, ...(prev ?? [])])
+            location.hash = `#/w/${ws.slug}`
+          }}
+        />
+      )
+    }
 
-  if (route.name === 'boards') {
-    const ws = findWorkspace(workspaces, route.workspaceRef)
-    if (!ws) return <NotInWorkspace />
-    return (
-      <Boards
-        user={user}
-        workspace={ws}
-        onOpen={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
-        onSettings={() => (location.hash = `#/w/${ws.slug}/settings`)}
-        onSwitch={() => (location.hash = '')}
-        onMyTasks={() => (location.hash = `#/w/${ws.slug}/my`)}
-      />
-    )
-  }
+    if (route.name === 'boards') {
+      const ws = findWorkspace(workspaces, route.workspaceRef)
+      if (!ws) return <NotInWorkspace />
+      return (
+        <Boards
+          user={user}
+          workspace={ws}
+          onOpen={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
+          onSettings={() => (location.hash = `#/w/${ws.slug}/settings`)}
+          onSwitch={() => (location.hash = '')}
+          onMyTasks={() => (location.hash = `#/w/${ws.slug}/my`)}
+        />
+      )
+    }
 
-  if (route.name === 'settings') {
-    const ws = findWorkspace(workspaces, route.workspaceRef)
-    if (!ws) return <NotInWorkspace />
-    return (
-      <Settings
-        user={user}
-        workspace={ws}
-        onBack={() => (location.hash = `#/w/${ws.slug}`)}
-        onLeft={() => {
-          setWorkspaces((prev) => prev?.filter((w) => w.id !== ws.id) ?? null)
-          location.hash = ''
-        }}
-      />
-    )
-  }
+    if (route.name === 'settings') {
+      const ws = findWorkspace(workspaces, route.workspaceRef)
+      if (!ws) return <NotInWorkspace />
+      return (
+        <Settings
+          user={user}
+          workspace={ws}
+          onBack={() => (location.hash = `#/w/${ws.slug}`)}
+          onLeft={() => {
+            setWorkspaces((prev) => prev?.filter((w) => w.id !== ws.id) ?? null)
+            location.hash = ''
+          }}
+        />
+      )
+    }
 
-  if (route.name === 'my-tasks') {
-    const ws = findWorkspace(workspaces, route.workspaceRef)
-    if (!ws) return <NotInWorkspace />
-    return (
-      <MyTasks
-        user={user}
-        workspace={ws}
-        onBack={() => (location.hash = `#/w/${ws.slug}`)}
-        onOpenBoard={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
-      />
-    )
-  }
+    if (route.name === 'my-tasks') {
+      const ws = findWorkspace(workspaces, route.workspaceRef)
+      if (!ws) return <NotInWorkspace />
+      return (
+        <MyTasks
+          user={user}
+          workspace={ws}
+          onBack={() => (location.hash = `#/w/${ws.slug}`)}
+          onOpenBoard={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
+        />
+      )
+    }
 
-  if (route.name === 'board') {
-    const ws = findWorkspace(workspaces, route.workspaceRef)
-    if (!ws) return <NotInWorkspace />
-    return (
-      <Board
-        boardId={route.boardId}
-        initialCardId={route.cardId}
-        user={user}
-        workspace={ws}
-        onBack={() => (location.hash = `#/w/${ws.slug}`)}
-      />
-    )
-  }
+    if (route.name === 'board') {
+      const ws = findWorkspace(workspaces, route.workspaceRef)
+      if (!ws) return <NotInWorkspace />
+      return (
+        <Board
+          boardId={route.boardId}
+          initialCardId={route.cardId}
+          user={user}
+          workspace={ws}
+          onBack={() => (location.hash = `#/w/${ws.slug}`)}
+        />
+      )
+    }
 
-  return null
+    return null
+  })()
+
+  return (
+    <>
+      {content}
+      <Toasts />
+    </>
+  )
 }
 
 function NotInWorkspace() {
