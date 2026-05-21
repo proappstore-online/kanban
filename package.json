@@ -1,0 +1,16 @@
+{
+  "name": "kanban",
+  "private": true,
+  "description": "Kanban Pro — team boards with real-time presence, assignees, and live collaboration on ProAppStore.",
+  "packageManager": "pnpm@10.30.3",
+  "engines": { "node": ">=22" },
+  "repository": { "type": "git", "url": "git+https://github.com/proappstore-online/kanban.git" },
+  "pnpm": { "onlyBuiltDependencies": ["esbuild"] },
+  "scripts": {
+    "dev": "pnpm --filter @kanban/web dev",
+    "prebuild": "npx -y @proappstore/cli@latest check",
+    "build": "pnpm --filter @kanban/web build",
+    "preview": "pnpm --filter @kanban/web preview",
+    "typecheck": "pnpm --filter @kanban/web exec tsc -b"
+  }
+}
