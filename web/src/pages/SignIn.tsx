@@ -24,6 +24,10 @@ export function SignIn() {
           >
             ProAppStore
           </a>
+          {' · '}
+          <span title="Worker custom domain attached via the platform's deploy_worker step">
+            data on data-kanban.proappstore.online
+          </span>
         </p>
       </div>
     </div>
