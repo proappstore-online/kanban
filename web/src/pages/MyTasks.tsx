@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@proappstore/sdk'
 import type { AssignedTask, ListKind, WorkspaceWithRole } from '../types'
-import { STATUS_LABEL } from '../types'
-import { listMyTasks } from '../lib/db'
+import { STATUS_KINDS, STATUS_LABEL } from '../types'
+import { getStatusListId, listMyTasks, moveCard } from '../lib/db'
 import { TopBar } from '../components/TopBar'
 
 interface MyTasksProps {
@@ -23,12 +23,30 @@ const STATUS_FILTERS: { value: ListKind | 'all'; label: string }[] = [
 export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) {
   const [tasks, setTasks] = useState<AssignedTask[] | null>(null)
   const [filter, setFilter] = useState<ListKind | 'all'>('all')
+  void user
 
-  useEffect(() => {
+  const refetch = useCallback(() => {
     listMyTasks(workspace.id)
       .then(setTasks)
       .catch(() => setTasks([]))
   }, [workspace.id])
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  /**
+   * Quick-status from a My Tasks row: find the matching list on that card's
+   * board, move the card to the end of it, refetch. Cross-board status
+   * change without leaving the inbox-style view.
+   */
+  async function handleChangeStatus(task: AssignedTask, targetKind: ListKind) {
+    if (targetKind === task.listKind) return
+    const targetListId = await getStatusListId(workspace.id, task.boardId, targetKind)
+    if (!targetListId) return
+    await moveCard(workspace.id, task.cardId, targetListId, null, null)
+    refetch()
+  }
 
   /**
    * Group filtered tasks by epic (=board). Each group also remembers the
@@ -129,14 +147,18 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
                 </div>
                 <ul className="mt-3 divide-y divide-[var(--line)] rounded-2xl border border-[var(--line)] bg-[var(--paper)]">
                   {g.items.map((t) => (
-                    <li key={t.cardId}>
+                    <li
+                      key={t.cardId}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--paper-deep)]"
+                    >
+                      <StatusBadge
+                        kind={t.listKind}
+                        onChange={(k) => handleChangeStatus(t, k)}
+                      />
                       <button
                         onClick={() => onOpenBoard(t.boardId)}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--paper-deep)]"
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       >
-                        {t.listKind !== 'other' && (
-                          <StatusDot kind={t.listKind} />
-                        )}
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-[var(--ink)]">
                             {t.cardTitle}
@@ -159,28 +181,109 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
   )
 }
 
-function StatusDot({ kind }: { kind: ListKind }) {
-  const color = (() => {
-    switch (kind) {
-      case 'new':
-        return 'var(--muted)'
-      case 'wip':
-        return 'var(--sky-deep)'
-      case 'testing':
-        return 'var(--warning)'
-      case 'launched':
-        return 'var(--mint-deep)'
-      default:
-        return 'var(--muted)'
+/**
+ * Status indicator that doubles as a quick-change picker. Renders as a
+ * colored dot for compactness; clicking opens a small menu of the four
+ * workflow stages. Picking one moves the card on its origin board to the
+ * matching list. Rows with `kind: 'other'` get a neutral dot but no
+ * picker (we don't know where to put the card without a kind mapping).
+ */
+function StatusBadge({
+  kind,
+  onChange,
+}: {
+  kind: ListKind
+  onChange: (next: ListKind) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
     }
-  })()
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  const dotColor = statusDotColor(kind)
+  if (kind === 'other') {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full"
+        style={{ background: dotColor }}
+        title={STATUS_LABEL[kind]}
+      />
+    )
+  }
+
   return (
-    <span
-      className="size-2 shrink-0 rounded-full"
-      style={{ background: color }}
-      title={STATUS_LABEL[kind]}
-    />
+    <span ref={wrapRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex size-5 items-center justify-center rounded-full hover:bg-[var(--paper-deep)]"
+        title={`${STATUS_LABEL[kind]} — click to change`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <span
+          className="size-2 rounded-full"
+          style={{ background: dotColor }}
+        />
+      </button>
+      {open && (
+        <ul
+          role="menu"
+          className="absolute left-0 top-full z-20 mt-1 min-w-[8rem] rounded-xl border border-[var(--line)] bg-[var(--paper)] py-1 shadow-[var(--shadow-soft)]"
+        >
+          {STATUS_KINDS.map((k) => {
+            const active = k === kind
+            return (
+              <li key={k}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    if (!active) onChange(k)
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-[var(--paper-deep)] ${
+                    active ? 'font-semibold' : ''
+                  }`}
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ background: statusDotColor(k) }}
+                  />
+                  <span className="flex-1 text-[var(--ink)]">{STATUS_LABEL[k]}</span>
+                  {active && (
+                    <span aria-hidden className="text-[var(--muted)]">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </span>
   )
+}
+
+function statusDotColor(kind: ListKind): string {
+  switch (kind) {
+    case 'new':
+      return 'var(--muted)'
+    case 'wip':
+      return 'var(--sky-deep)'
+    case 'testing':
+      return 'var(--warning)'
+    case 'launched':
+      return 'var(--mint-deep)'
+    default:
+      return 'var(--muted)'
+  }
 }
 
 function DateBadges({ dueAt, etaAt }: { dueAt?: number; etaAt?: number }) {

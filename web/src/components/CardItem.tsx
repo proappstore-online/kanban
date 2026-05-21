@@ -1,16 +1,19 @@
+import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CSSProperties } from 'react'
 import type { Assignee, Card, LabelColor, ListKind } from '../types'
-import { STATUS_LABEL } from '../types'
+import { STATUS_KINDS, STATUS_LABEL } from '../types'
 
 interface CardItemProps {
   card: Card
   listKind: ListKind
   onClick: () => void
+  /** Optional quick-status changer — pill becomes a dropdown when provided. */
+  onChangeStatus?: (next: ListKind) => void
 }
 
-export function CardItem({ card, listKind, onClick }: CardItemProps) {
+export function CardItem({ card, listKind, onClick, onChangeStatus }: CardItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: 'card', cardId: card.id },
@@ -38,7 +41,9 @@ export function CardItem({ card, listKind, onClick }: CardItemProps) {
     >
       {(labels.length > 0 || listKind !== 'other') && (
         <div className="-mt-0.5 mb-2 flex flex-wrap items-center gap-1">
-          {listKind !== 'other' && <StatusPill kind={listKind} />}
+          {listKind !== 'other' && (
+            <StatusPill kind={listKind} onChange={onChangeStatus} />
+          )}
           {labels.map((l) => (
             <LabelChip key={l.id} color={l.color} name={l.name} />
           ))}
@@ -204,16 +209,112 @@ function formatDueLabel(d: Date, daysDelta: number): string {
  * Workflow status as a colored pill — derived from the parent list's `kind`.
  * Lives on the card preview so a team member browsing the My Tasks page or
  * an out-of-list view immediately knows where the card sits in the flow.
+ *
+ * When `onChange` is provided, the pill becomes a small dropdown menu —
+ * tap to pick another status without dragging the card. Critical on mobile
+ * (where drag is a hold gesture) and on the My Tasks view (where there's
+ * no list strip to drop into).
  */
-function StatusPill({ kind }: { kind: ListKind }) {
+function StatusPill({
+  kind,
+  onChange,
+}: {
+  kind: ListKind
+  onChange?: (next: ListKind) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
   const palette = statusPalette(kind)
+  const style = {
+    background: palette.bg,
+    color: palette.fg,
+  }
+
+  if (!onChange) {
+    return (
+      <span
+        className="inline-flex h-[18px] items-center rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide"
+        style={style}
+        title={`Status: ${STATUS_LABEL[kind]}`}
+      >
+        {STATUS_LABEL[kind]}
+      </span>
+    )
+  }
+
   return (
-    <span
-      className="inline-flex h-[18px] items-center rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide"
-      style={{ background: palette.bg, color: palette.fg }}
-      title={`Status: ${STATUS_LABEL[kind]}`}
-    >
-      {STATUS_LABEL[kind]}
+    <span ref={wrapRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={(e) => {
+          // The card itself has an onClick that opens the modal — stop
+          // propagation so picking a status doesn't also open the card.
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+        // The dnd-kit listeners on the card start a drag on press —
+        // stop propagation here so a tap on the pill doesn't initiate
+        // one.
+        onPointerDown={(e) => e.stopPropagation()}
+        className="inline-flex h-[18px] items-center gap-1 rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide hover:opacity-90"
+        style={style}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={`Status: ${STATUS_LABEL[kind]} (click to change)`}
+      >
+        {STATUS_LABEL[kind]}
+        <span aria-hidden className="text-[7px]">
+          ▾
+        </span>
+      </button>
+      {open && (
+        <ul
+          role="menu"
+          className="absolute left-0 top-full z-20 mt-1 min-w-[8rem] rounded-xl border border-[var(--line)] bg-[var(--paper)] py-1 shadow-[var(--shadow-soft)]"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {STATUS_KINDS.map((k) => {
+            const active = k === kind
+            const p = statusPalette(k)
+            return (
+              <li key={k}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    if (!active) onChange(k)
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-[var(--paper-deep)] ${
+                    active ? 'font-semibold' : ''
+                  }`}
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ background: p.fg }}
+                  />
+                  <span className="flex-1 text-[var(--ink)]">{STATUS_LABEL[k]}</span>
+                  {active && (
+                    <span aria-hidden className="text-[var(--muted)]">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </span>
   )
 }

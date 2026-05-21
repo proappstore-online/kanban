@@ -36,6 +36,27 @@ export async function renameList(
   )
 }
 
+/**
+ * Look up the list on a board that represents a given workflow stage.
+ * Used by the My Tasks quick-status changer: we know the card's board
+ * but not which list on that board carries the chosen `kind`. Returns
+ * null if the user has deleted that workflow column on that board.
+ */
+export async function getStatusListId(
+  tenantId: string,
+  boardId: string,
+  kind: ListKind,
+): Promise<string | null> {
+  await ensureMigrated()
+  const { rows } = await app.db.query<{ id: string }>(
+    `SELECT id FROM lists
+      WHERE tenant_id = ? AND board_id = ? AND kind = ? AND archived = 0
+      LIMIT 1`,
+    [tenantId, boardId, kind],
+  )
+  return rows[0]?.id ?? null
+}
+
 export async function deleteList(tenantId: string, listId: string): Promise<void> {
   await ensureMigrated()
   const inCards = `card_id IN (SELECT id FROM cards WHERE list_id = ?)`

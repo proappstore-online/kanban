@@ -44,7 +44,7 @@ export {
 
 export { getBoardFull } from './board-full'
 
-export { createList, renameList, deleteList } from './lists'
+export { createList, renameList, deleteList, getStatusListId } from './lists'
 
 export {
   createCard,

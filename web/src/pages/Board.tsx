@@ -21,6 +21,7 @@ import {
   deleteList,
   ensureBoardLabels,
   logActivity,
+  moveCard,
   removeAssignee,
   renameBoard,
   renameBoardLabel,
@@ -35,6 +36,12 @@ import { CardModal } from '../components/CardModal'
 import { PresenceBar } from '../components/PresenceBar'
 import { ActivityPanel } from '../components/ActivityPanel'
 import { MentionsBell } from '../components/MentionsBell'
+import {
+  BoardFilters,
+  EMPTY_FILTER,
+  matchesFilter,
+  type BoardFilter,
+} from '../components/BoardFilters'
 import { useBoardData } from './board/useBoardData'
 import { useBoardDragDrop } from './board/useBoardDragDrop'
 
@@ -52,6 +59,7 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
   const [newListTitle, setNewListTitle] = useState('')
   const [renamingBoard, setRenamingBoard] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
+  const [filter, setFilter] = useState<BoardFilter>(EMPTY_FILTER)
 
   const {
     board,
@@ -344,6 +352,76 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
     ? board.lists.find((l) => l.id === openCard.listId)?.cards.find((c) => c.id === openCard.cardId)
     : null
 
+  // Filter counts shown in the BoardFilters toolbar. Computed once per
+  // render — cheap on board sizes we care about; if it ever shows up in
+  // a profile, memoize on (board, filter, user.id).
+  const totalCards = board.lists.reduce((n, l) => n + l.cards.length, 0)
+  const visibleCards = board.lists.reduce(
+    (n, l) => n + l.cards.filter((c) => matchesFilter(c, filter, user.id)).length,
+    0,
+  )
+
+  /**
+   * Status pill quick-change: find the list on this board whose kind
+   * matches the chosen status and move the card there. Reuses the same
+   * moveCard + broadcast path as drag-drop, so other peers see it land
+   * exactly as if the user had dragged the card.
+   */
+  async function handleQuickStatus(
+    cardId: string,
+    fromListId: string,
+    targetKind: import('../types').ListKind,
+  ) {
+    if (!board) return
+    const targetList = board.lists.find((l) => l.kind === targetKind)
+    if (!targetList || targetList.id === fromListId) return
+
+    const sourceList = board.lists.find((l) => l.id === fromListId)
+    const card = sourceList?.cards.find((c) => c.id === cardId)
+    if (!card) return
+
+    // Optimistic local move to the end of the target list.
+    setBoard((b) => {
+      if (!b) return b
+      const next = structuredClone(b) as typeof b
+      const from = next.lists.find((l) => l.id === fromListId)!
+      const to = next.lists.find((l) => l.id === targetList.id)!
+      const idx = from.cards.findIndex((c) => c.id === cardId)
+      if (idx === -1) return b
+      const [moved] = from.cards.splice(idx, 1)
+      moved.listId = targetList.id
+      to.cards.push(moved)
+      return next
+    })
+
+    const lastPos = targetList.cards[targetList.cards.length - 1]?.position ?? null
+    try {
+      const position = await moveCard(workspace.id, cardId, targetList.id, lastPos, null)
+      setBoard((b) => {
+        if (!b) return b
+        const next = structuredClone(b) as typeof b
+        const l = next.lists.find((l) => l.cards.some((c) => c.id === cardId))
+        const c = l?.cards.find((c) => c.id === cardId)
+        if (c) c.position = position
+        return next
+      })
+      broadcast({
+        kind: 'card.moved',
+        cardId,
+        fromListId,
+        toListId: targetList.id,
+        position,
+      })
+      logAndAnnounce(
+        'card.moved',
+        { title: card.title, from: sourceList?.title, to: targetList.title },
+        cardId,
+      )
+    } catch {
+      refetch().catch(() => {})
+    }
+  }
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <TopBar
@@ -404,6 +482,16 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
         }
       />
 
+      <BoardFilters
+        board={board}
+        members={members}
+        selfUserId={user.id}
+        value={filter}
+        onChange={setFilter}
+        totalCards={totalCards}
+        visibleCards={visibleCards}
+      />
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -411,16 +499,22 @@ export function Board({ boardId, user, workspace, onBack }: BoardProps) {
         onDragEnd={handleDragEnd}
       >
         <main className="flex flex-1 snap-x snap-mandatory gap-4 overflow-x-auto scroll-pl-4 px-4 py-6 sm:snap-none sm:px-6">
-          {board.lists.map((list) => (
-            <ListColumn
-              key={list.id}
-              list={list}
-              onAddCard={(title) => handleAddCard(list, title)}
-              onCardClick={(card) => setOpenCard({ cardId: card.id, listId: list.id })}
-              onRename={(title) => handleRenameList(list.id, title)}
-              onDelete={() => handleDeleteList(list.id)}
-            />
-          ))}
+          {board.lists.map((list) => {
+            const visible = list.cards.filter((c) => matchesFilter(c, filter, user.id))
+            return (
+              <ListColumn
+                key={list.id}
+                list={{ ...list, cards: visible }}
+                onAddCard={(title) => handleAddCard(list, title)}
+                onCardClick={(card) => setOpenCard({ cardId: card.id, listId: list.id })}
+                onRename={(title) => handleRenameList(list.id, title)}
+                onDelete={() => handleDeleteList(list.id)}
+                onQuickStatus={(card, targetKind) =>
+                  handleQuickStatus(card.id, list.id, targetKind)
+                }
+              />
+            )
+          })}
 
           {addingList ? (
             <div className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none">

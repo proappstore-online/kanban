@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import type { List, Card } from '../types'
+import type { Card, List, ListKind } from '../types'
 import { CardItem } from './CardItem'
 
 interface ListColumnProps {
@@ -10,9 +10,18 @@ interface ListColumnProps {
   onCardClick: (card: Card) => void
   onRename: (title: string) => void
   onDelete: () => void
+  /** Move this card to the workflow stage with the given kind on the same board. */
+  onQuickStatus?: (card: Card, targetKind: ListKind) => void
 }
 
-export function ListColumn({ list, onAddCard, onCardClick, onRename, onDelete }: ListColumnProps) {
+export function ListColumn({
+  list,
+  onAddCard,
+  onCardClick,
+  onRename,
+  onDelete,
+  onQuickStatus,
+}: ListColumnProps) {
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
@@ -88,6 +97,9 @@ export function ListColumn({ list, onAddCard, onCardClick, onRename, onDelete }:
                 card={card}
                 listKind={list.kind}
                 onClick={() => onCardClick(card)}
+                onChangeStatus={
+                  onQuickStatus ? (kind) => onQuickStatus(card, kind) : undefined
+                }
               />
             ))
           )}
