@@ -123,14 +123,15 @@ export function useBoardDragDrop({
       const fromColId = activeId.slice(4)
       const toColId = overId.slice(4)
       if (fromColId === toColId || !board) return
+      const boardId = board.id
       const oldIndex = board.lists.findIndex((l) => l.id === fromColId)
       const newIndex = board.lists.findIndex((l) => l.id === toColId)
       if (oldIndex === -1 || newIndex === -1) return
       const reordered = arrayMove(board.lists, oldIndex, newIndex)
-      setBoard({ ...board, lists: reordered })
+      setBoard((b) => (b ? { ...b, lists: reordered } : b))
       const prevPos = newIndex > 0 ? reordered[newIndex - 1].position : null
       const nextPos = newIndex < reordered.length - 1 ? reordered[newIndex + 1].position : null
-      moveList(tenantId, board.id, fromColId, prevPos, nextPos)
+      moveList(tenantId, boardId, fromColId, prevPos, nextPos)
         .then((position) => {
           setBoard((b) => {
             if (!b) return b

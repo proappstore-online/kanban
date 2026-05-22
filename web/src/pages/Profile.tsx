@@ -234,7 +234,7 @@ export function Profile({ user, workspaces }: ProfileProps) {
           </div>
         </section>
 
-        {permission !== 'denied' && (
+        {typeof Notification !== 'undefined' && permission !== 'denied' && (
           <section className="mt-10">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
               Notifications

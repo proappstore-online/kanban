@@ -182,8 +182,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
 
   useKeyboardShortcuts({
     onNewCard: () => {
-      // Click the first list's "Add a card" button
-      const btn = document.querySelector<HTMLButtonElement>('button[class*="rounded-xl"][class*="text-left"]')
+      const btn = document.querySelector<HTMLButtonElement>('[data-shortcut="add-card"]')
       btn?.click()
     },
     onSearch: () => {

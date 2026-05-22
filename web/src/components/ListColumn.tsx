@@ -202,6 +202,7 @@ export function ListColumn({
       ) : (
         <button
           onClick={() => setAdding(true)}
+          data-shortcut="add-card"
           className="rounded-xl px-2 py-1.5 text-left text-xs text-[var(--muted)] hover:bg-[var(--glass-hover)] hover:text-[var(--ink)]"
         >
           + Add a card

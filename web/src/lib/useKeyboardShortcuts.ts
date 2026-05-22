@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export interface ShortcutHandlers {
   onNewCard?: () => void
@@ -15,6 +15,9 @@ export interface ShortcutHandlers {
  * - `?` → show shortcuts help
  */
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
+  const ref = useRef(handlers)
+  ref.current = handlers
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName
@@ -25,20 +28,20 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       switch (e.key) {
         case 'n':
           e.preventDefault()
-          handlers.onNewCard?.()
+          ref.current.onNewCard?.()
           break
         case '/':
           e.preventDefault()
-          handlers.onSearch?.()
+          ref.current.onSearch?.()
           break
         case '?':
           e.preventDefault()
-          handlers.onHelp?.()
+          ref.current.onHelp?.()
           break
       }
     }
 
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [handlers])
+  }, [])
 }
