@@ -45,6 +45,7 @@ import { ArchivedPanel } from '../components/ArchivedPanel'
 import { Loading } from '../components/Loading'
 import { MentionsBell } from '../components/MentionsBell'
 import { toast } from '../lib/toast'
+import { notifyUser } from '../lib/notify'
 import {
   BoardFilters,
   EMPTY_FILTER,
@@ -370,6 +371,15 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     if (exists) await removeAssignee(workspace.id, cardId, member.userId)
     else await addAssignee(workspace.id, cardId, member.userId)
     broadcast({ kind: 'card.assignees-changed', cardId })
+    // Push notification when assigning someone else
+    if (!exists && member.userId !== user.id) {
+      notifyUser(member.userId, {
+        title: `${user.login} assigned you`,
+        body: `Card: "${card.title}"`,
+        url: `${location.origin}/#/w/${workspace.slug}/board/${board.id}/card/${cardId}`,
+        tag: `assign:${cardId}`,
+      })
+    }
     logAndAnnounce(
       exists ? 'card.unassigned' : 'card.assigned',
       { cardTitle: card.title, member: member.displayName },
@@ -396,6 +406,16 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         }
       })
       broadcast({ kind: 'card.comment-added', cardId })
+      // Push notifications to mentioned users
+      const cardUrl = `${location.origin}/#/w/${workspace.slug}/board/${board.id}/card/${cardId}`
+      for (const uid of result.mentionedUserIds) {
+        notifyUser(uid, {
+          title: `@${user.login} mentioned you`,
+          body: `In "${cardTitle}": ${body.slice(0, 80)}`,
+          url: cardUrl,
+          tag: `mention:${cardId}`,
+        })
+      }
       logAndAnnounce(
         'comment.added',
         {
