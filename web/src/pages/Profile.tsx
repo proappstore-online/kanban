@@ -79,9 +79,11 @@ export function Profile({ user, workspaces }: ProfileProps) {
         left={
           <a
             href="#"
-            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+            aria-label="Back to workspaces"
+            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] sm:px-3"
           >
-            ← Workspaces
+            <span className="sm:hidden">←</span>
+            <span className="hidden sm:inline">← Workspaces</span>
           </a>
         }
         center={<>Profile</>}

@@ -119,9 +119,11 @@ export function Boards({
         left={
           <button
             onClick={onSwitch}
-            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+            aria-label="Back to workspaces"
+            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] sm:px-3"
           >
-            ← Workspaces
+            <span className="sm:hidden">←</span>
+            <span className="hidden sm:inline">← Workspaces</span>
           </button>
         }
         center={<>{workspace.name}</>}
@@ -132,16 +134,20 @@ export function Boards({
               <button
                 onClick={handleInvite}
                 disabled={inviteBusy}
-                className="rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent-deep)] hover:opacity-80 disabled:opacity-40"
+                aria-label="Invite"
+                className="flex items-center justify-center rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--accent-deep)] hover:opacity-80 disabled:opacity-40 sm:px-3"
               >
-                {inviteBusy ? 'Creating…' : 'Invite'}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4 sm:hidden"><path d="M11 5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM2.046 15.253c-.058.468.172.92.57 1.175A9.953 9.953 0 0 0 8 18a9.953 9.953 0 0 0 5.384-1.572.898.898 0 0 0 .57-1.175 6.001 6.001 0 0 0-11.908 0ZM16.75 5.75a.75.75 0 0 0-1.5 0v2h-2a.75.75 0 0 0 0 1.5h2v2a.75.75 0 0 0 1.5 0v-2h2a.75.75 0 0 0 0-1.5h-2v-2Z" /></svg>
+                <span className="hidden sm:inline">{inviteBusy ? 'Creating…' : 'Invite'}</span>
               </button>
             )}
             <button
               onClick={onMyTasks}
-              className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+              aria-label="My tasks"
+              className="flex items-center justify-center rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] sm:px-3"
             >
-              My tasks
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4 sm:hidden"><path fillRule="evenodd" d="M6 4.75A.75.75 0 0 1 6.75 4h10.5a.75.75 0 0 1 0 1.5H6.75A.75.75 0 0 1 6 4.75ZM6 10a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H6.75A.75.75 0 0 1 6 10Zm0 5.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H6.75a.75.75 0 0 1-.75-.75ZM1.99 4.99a1 1 0 0 1 1-1H3a1 1 0 0 1 1 1v.01a1 1 0 0 1-1 1h-.01a1 1 0 0 1-1-1v-.01ZM1.99 15.24a1 1 0 0 1 1-1H3a1 1 0 0 1 1 1v.01a1 1 0 0 1-1 1h-.01a1 1 0 0 1-1-1v-.01ZM1.99 10a1 1 0 0 1 1-1H3a1 1 0 0 1 1 1v.01a1 1 0 0 1-1 1h-.01a1 1 0 0 1-1-1V10Z" clipRule="evenodd" /></svg>
+              <span className="hidden sm:inline">My tasks</span>
             </button>
           </>
         }

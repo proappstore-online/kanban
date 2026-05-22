@@ -173,9 +173,11 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
         left={
           <button
             onClick={onBack}
-            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+            aria-label="Back to boards"
+            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] sm:px-3"
           >
-            ← Boards
+            <span className="sm:hidden">←</span>
+            <span className="hidden sm:inline">← Boards</span>
           </button>
         }
         center={<>Settings — {workspace.name}</>}
