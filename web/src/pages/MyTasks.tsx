@@ -120,6 +120,7 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
     <div className="min-h-[100dvh]">
       <TopBar
         user={user}
+        settingsHref={`#/w/${workspace.slug}/settings`}
         left={
           <button
             onClick={onBack}

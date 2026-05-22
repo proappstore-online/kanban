@@ -570,6 +570,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     <div className="flex min-h-[100dvh] flex-col">
       <TopBar
         user={user}
+        settingsHref={`#/w/${workspace.slug}/settings`}
         left={<BackButton onClick={onBack} />}
         center={
           renamingBoard ? (

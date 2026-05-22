@@ -9,6 +9,7 @@ import { Board } from './pages/Board'
 import { Settings } from './pages/Settings'
 import { MyTasks } from './pages/MyTasks'
 import { AcceptInvite } from './pages/AcceptInvite'
+import { Profile } from './pages/Profile'
 import { listMyWorkspaces } from './lib/db'
 import type { WorkspaceWithRole } from './types'
 import { Toasts } from './components/Toasts'
@@ -23,6 +24,7 @@ import { Loading } from './components/Loading'
  */
 type Route =
   | { name: 'workspaces' }
+  | { name: 'profile' }
   | { name: 'boards'; workspaceRef: string }
   | { name: 'board'; workspaceRef: string; boardId: string; cardId?: string }
   | { name: 'settings'; workspaceRef: string }
@@ -53,6 +55,7 @@ function parseHash(): Route {
   if (m) return { name: 'boards', workspaceRef: decodeURIComponent(m[1]) }
   m = h.match(/^#\/invite\/([\w-]+)$/)
   if (m) return { name: 'invite', code: m[1] }
+  if (h === '#/profile') return { name: 'profile' }
   return { name: 'workspaces' }
 }
 
@@ -112,7 +115,7 @@ export default function App() {
   // keeps the back-button history clean.
   useEffect(() => {
     if (!workspaces) return
-    if (route.name === 'workspaces' || route.name === 'invite') return
+    if (route.name === 'workspaces' || route.name === 'invite' || route.name === 'profile') return
     const ws = findWorkspace(workspaces, route.workspaceRef)
     if (!ws || ws.slug === route.workspaceRef) return
     const replaced = location.hash.replace(
@@ -141,6 +144,10 @@ export default function App() {
           }}
         />
       )
+    }
+
+    if (route.name === 'profile') {
+      return <Profile user={user} workspaces={workspaces ?? []} />
     }
 
     if (workspaces === null) {
@@ -181,7 +188,6 @@ export default function App() {
           user={user}
           workspace={ws}
           onOpen={(boardId) => (location.hash = `#/w/${ws.slug}/board/${boardId}`)}
-          onSettings={() => (location.hash = `#/w/${ws.slug}/settings`)}
           onSwitch={() => (location.hash = '')}
           onMyTasks={() => (location.hash = `#/w/${ws.slug}/my`)}
         />

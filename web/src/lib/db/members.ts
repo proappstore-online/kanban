@@ -51,3 +51,13 @@ export async function removeMember(tenantId: string, memberId: string): Promise<
   await ensureMigrated()
   await app.db.execute(`DELETE FROM members WHERE id = ? AND tenant_id = ?`, [memberId, tenantId])
 }
+
+export async function updateMyDisplayName(tenantId: string, displayName: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  await app.db.execute(
+    `UPDATE members SET display_name = ? WHERE tenant_id = ? AND user_id = ?`,
+    [displayName, tenantId, me.id],
+  )
+}

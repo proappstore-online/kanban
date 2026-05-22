@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { User } from '@proappstore/sdk'
-import { app } from '../lib/app'
 import { useInstallPrompt } from '../lib/useInstallPrompt'
 
 interface TopBarProps {
@@ -9,6 +7,8 @@ interface TopBarProps {
   left?: ReactNode
   center?: ReactNode
   right?: ReactNode
+  /** When set, shows a gear icon linking to workspace settings. */
+  settingsHref?: string
 }
 
 /**
@@ -17,7 +17,7 @@ interface TopBarProps {
  * collapse into a kebab menu under sm so the right slot has room for the
  * page-specific actions on phones.
  */
-export function TopBar({ user, left, center, right }: TopBarProps) {
+export function TopBar({ user, left, center, right, settingsHref }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--glass-strong)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-[1540px] items-center gap-2 px-3 py-3 sm:gap-3 sm:px-6">
@@ -36,6 +36,7 @@ export function TopBar({ user, left, center, right }: TopBarProps) {
         <div className="flex shrink-0 items-center gap-2">
           {right}
           <InstallButton />
+          {settingsHref && <SettingsIcon href={settingsHref} />}
           <AccountMenu user={user} />
         </div>
       </div>
@@ -43,68 +44,37 @@ export function TopBar({ user, left, center, right }: TopBarProps) {
   )
 }
 
-/**
- * @login chip + Sign out, collapsed into a kebab on small screens so the
- * page-specific right-slot actions don't crowd the top bar on phones.
- */
-function AccountMenu({ user }: { user: User }) {
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    function onDoc(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
-
+function SettingsIcon({ href }: { href: string }) {
   return (
-    <>
-      {/* Desktop: inline chip + sign out */}
-      <span className="hidden text-xs text-[var(--muted)] sm:inline">@{user.login}</span>
-      <button
-        onClick={() => app.auth.signOut()}
-        className="hidden rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)] sm:inline-block"
-      >
-        Sign out
-      </button>
+    <a
+      href={href}
+      aria-label="Workspace settings"
+      title="Settings"
+      className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-[18px]">
+        <path fillRule="evenodd" d="M8.34 1.804A1 1 0 0 1 9.32 1h1.36a1 1 0 0 1 .98.804l.295 1.473c.497.179.971.405 1.416.67l1.405-.586a1 1 0 0 1 1.216.356l.68 1.178a1 1 0 0 1-.236 1.26l-1.11.887a7 7 0 0 1 0 1.316l1.11.887a1 1 0 0 1 .236 1.26l-.68 1.178a1 1 0 0 1-1.216.356l-1.405-.586a7 7 0 0 1-1.416.67l-.295 1.473a1 1 0 0 1-.98.804H9.32a1 1 0 0 1-.98-.804l-.295-1.473a7 7 0 0 1-1.416-.67l-1.405.586a1 1 0 0 1-1.216-.356l-.68-1.178a1 1 0 0 1 .236-1.26l1.11-.887a7 7 0 0 1 0-1.316l-1.11-.887a1 1 0 0 1-.236-1.26l.68-1.178a1 1 0 0 1 1.216-.356l1.405.586a7 7 0 0 1 1.416-.67l.295-1.473ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />
+      </svg>
+    </a>
+  )
+}
 
-      {/* Mobile: kebab dropdown */}
-      <div ref={wrapRef} className="relative sm:hidden">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Account menu"
-          aria-haspopup="true"
-          aria-expanded={open}
-          className="flex size-8 items-center justify-center rounded-full border border-[var(--line-strong)] bg-[var(--glass)] text-[var(--muted)] hover:text-[var(--ink)]"
-        >
-          {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt={user.login} className="size-8 rounded-full object-cover" />
-          ) : (
-            <span className="text-xs font-semibold">
-              {user.login[0]?.toUpperCase() ?? '?'}
-            </span>
-          )}
-        </button>
-        {open && (
-          <div className="absolute right-0 top-full z-40 mt-2 w-44 rounded-2xl border border-[var(--line)] bg-[var(--paper)] py-2 shadow-[var(--shadow-soft)]">
-            <div className="px-4 pb-2 text-xs text-[var(--muted)]">
-              @{user.login}
-            </div>
-            <button
-              onClick={() => {
-                setOpen(false)
-                app.auth.signOut()
-              }}
-              className="block w-full px-4 py-2 text-left text-sm text-[var(--error)] hover:bg-[var(--paper-deep)]"
-            >
-              Sign out
-            </button>
-          </div>
-        )}
-      </div>
-    </>
+/** Clickable avatar that navigates to the profile page. */
+function AccountMenu({ user }: { user: User }) {
+  return (
+    <a
+      href="#/profile"
+      aria-label="Profile"
+      className="flex size-8 shrink-0 items-center justify-center rounded-full ring-2 ring-transparent hover:ring-[var(--line-strong)] transition-shadow"
+    >
+      {user.avatarUrl ? (
+        <img src={user.avatarUrl} alt={user.login} className="size-8 rounded-full object-cover" />
+      ) : (
+        <span className="flex size-8 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent-deep)]">
+          {user.login[0]?.toUpperCase() ?? '?'}
+        </span>
+      )}
+    </a>
   )
 }
 

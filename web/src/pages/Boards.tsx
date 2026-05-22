@@ -14,7 +14,6 @@ interface BoardsProps {
   user: User
   workspace: WorkspaceWithRole
   onOpen: (id: string) => void
-  onSettings: () => void
   onSwitch: () => void
   onMyTasks: () => void
 }
@@ -23,7 +22,6 @@ export function Boards({
   user,
   workspace,
   onOpen,
-  onSettings,
   onSwitch,
   onMyTasks,
 }: BoardsProps) {
@@ -106,21 +104,14 @@ export function Boards({
           </button>
         }
         center={<>{workspace.name}</>}
+        settingsHref={`#/w/${workspace.slug}/settings`}
         right={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onMyTasks}
-              className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
-            >
-              My tasks
-            </button>
-            <button
-              onClick={onSettings}
-              className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
-            >
-              Settings
-            </button>
-          </div>
+          <button
+            onClick={onMyTasks}
+            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+          >
+            My tasks
+          </button>
         }
       />
       <main className="mx-auto max-w-[1540px] px-4 py-8 sm:px-6">
