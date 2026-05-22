@@ -63,8 +63,8 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
 
   async function handleDelete() {
     if (!isOwner) return
-    if (!confirm(`Delete "${workspace.name}"? All boards, cards, comments, and members will be permanently removed.`)) return
-    if (!confirm(`Are you absolutely sure? This cannot be undone.`)) return
+    const typed = prompt(`Type "${workspace.name}" to permanently delete this workspace and all its data.`)
+    if (typed !== workspace.name) return
     try {
       await deleteWorkspace(workspace.id)
       localStorage.removeItem('kanban:lastBoard')
