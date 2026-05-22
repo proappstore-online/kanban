@@ -74,11 +74,12 @@ export async function createInvite(tenantId: string, role: Role = 'member'): Pro
 
 export async function listInvites(tenantId: string): Promise<Invite[]> {
   await ensureMigrated()
+  const now = Date.now()
   const { rows } = await app.db.query<InviteRow>(
     `SELECT * FROM invites
-      WHERE tenant_id = ? AND accepted_at IS NULL
+      WHERE tenant_id = ? AND (expires_at IS NULL OR expires_at > ?)
    ORDER BY created_at DESC`,
-    [tenantId],
+    [tenantId, now],
   )
   return rows.map(rowToInvite)
 }
@@ -89,12 +90,12 @@ export async function revokeInvite(tenantId: string, inviteId: string): Promise<
 }
 
 /**
- * Redeem an invite code. Adds the current user as a member of the workspace,
- * marks the invite consumed, and returns the workspace they joined. Returns
- * null if the code is invalid, expired, already used, OR if the underlying
- * workspace has been deleted — the UI surfaces all four as a generic
- * "invite invalid" because we don't want to leak workspace existence.
- * Idempotent for the same user joining the same workspace twice.
+ * Redeem an invite code. Adds the current user as a member of the workspace
+ * and returns the workspace they joined. Invite links are reusable — any
+ * number of people can join with the same link until it expires or is
+ * revoked. Returns null if the code is invalid, expired, or the workspace
+ * no longer exists. Idempotent: if already a member, just returns the
+ * workspace without re-adding.
  */
 export async function redeemInvite(code: string): Promise<Workspace | null> {
   await ensureMigrated()
@@ -104,7 +105,6 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
   const { rows } = await app.db.query<InviteRow>(
     `SELECT * FROM invites
       WHERE code = ?
-        AND accepted_at IS NULL
         AND (expires_at IS NULL OR expires_at > ?)
       LIMIT 1`,
     [code, now],
@@ -122,22 +122,18 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
        VALUES (?,?,?,?,?,?,?)`,
       [rid(), invite.tenant_id, me.id, invite.role, me.login ?? 'New member', me.avatarUrl ?? null, now],
     )
-  }
-  await app.db.execute(
-    `UPDATE invites SET accepted_at = ?, accepted_by = ? WHERE id = ?`,
-    [now, me.id, invite.id],
-  )
 
-  // Notify existing members via activity feed on all boards
-  const { rows: boardIds } = await app.db.query<{ id: string }>(
-    `SELECT id FROM boards WHERE tenant_id = ? AND archived = 0`,
-    [invite.tenant_id],
-  )
-  for (const b of boardIds) {
-    logActivity(invite.tenant_id, b.id, 'member.joined', {
-      displayName: me.login ?? 'New member',
-    }).catch(() => {})
-    fireBoardPatch(b.id, { kind: 'activity.added' })
+    // Notify existing members via activity feed on all boards
+    const { rows: boardIds } = await app.db.query<{ id: string }>(
+      `SELECT id FROM boards WHERE tenant_id = ? AND archived = 0`,
+      [invite.tenant_id],
+    )
+    for (const b of boardIds) {
+      logActivity(invite.tenant_id, b.id, 'member.joined', {
+        displayName: me.login ?? 'New member',
+      }).catch(() => {})
+      fireBoardPatch(b.id, { kind: 'activity.added' })
+    }
   }
 
   const { rows: ws } = await app.db.query<WorkspaceRow>(
