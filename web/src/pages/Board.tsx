@@ -671,6 +671,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
                 onQuickStatus={(card, targetKind) =>
                   handleQuickStatus(card.id, list.id, targetKind)
                 }
+                cardCap={list.kind === 'launched' ? 10 : undefined}
               />
             )
           })}
@@ -710,12 +711,20 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
                 </button>
               </div>
             </div>
-          ) : (
+          ) : board.lists.length < 2 ? (
             <button
               onClick={() => setAddingList(true)}
               className="flex h-12 w-[calc(100vw-2rem)] shrink-0 snap-start items-center justify-center rounded-2xl border-2 border-dashed border-[var(--line-strong)] text-sm font-medium text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] sm:w-72 sm:snap-align-none"
             >
               + Add a list
+            </button>
+          ) : (
+            <button
+              onClick={() => setAddingList(true)}
+              title="Add a list"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--line-strong)] text-lg text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] self-start mt-3"
+            >
+              +
             </button>
           )}
         </main>

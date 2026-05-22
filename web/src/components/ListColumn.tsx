@@ -12,6 +12,8 @@ interface ListColumnProps {
   onDelete: () => void
   /** Move this card to the workflow stage with the given kind on the same board. */
   onQuickStatus?: (card: Card, targetKind: ListKind) => void
+  /** Cap the visible cards to this number (default: unlimited). Shows "Show all" when capped. */
+  cardCap?: number
 }
 
 export function ListColumn({
@@ -21,11 +23,13 @@ export function ListColumn({
   onRename,
   onDelete,
   onQuickStatus,
+  cardCap,
 }: ListColumnProps) {
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(list.title)
+  const [expanded, setExpanded] = useState(false)
 
   const { setNodeRef } = useDroppable({
     id: `list:${list.id}`,
@@ -91,17 +95,35 @@ export function ListColumn({
               Drop a card here, or add one below
             </div>
           ) : (
-            list.cards.map((card) => (
-              <CardItem
-                key={card.id}
-                card={card}
-                listKind={list.kind}
-                onClick={() => onCardClick(card)}
-                onChangeStatus={
-                  onQuickStatus ? (kind) => onQuickStatus(card, kind) : undefined
-                }
-              />
-            ))
+            <>
+              {(cardCap && !expanded ? list.cards.slice(0, cardCap) : list.cards).map((card) => (
+                <CardItem
+                  key={card.id}
+                  card={card}
+                  listKind={list.kind}
+                  onClick={() => onCardClick(card)}
+                  onChangeStatus={
+                    onQuickStatus ? (kind) => onQuickStatus(card, kind) : undefined
+                  }
+                />
+              ))}
+              {cardCap && !expanded && list.cards.length > cardCap && (
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="rounded-xl px-2 py-2 text-center text-xs font-medium text-[var(--accent-deep)] hover:bg-[var(--accent-soft)]"
+                >
+                  Show all {list.cards.length} cards
+                </button>
+              )}
+              {cardCap && expanded && list.cards.length > cardCap && (
+                <button
+                  onClick={() => setExpanded(false)}
+                  className="rounded-xl px-2 py-2 text-center text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)]"
+                >
+                  Show recent {cardCap} only
+                </button>
+              )}
+            </>
           )}
         </div>
       </SortableContext>
