@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@proappstore/sdk'
 import type { Member, WorkspaceWithRole } from '../types'
-import { listMembers, updateMyDisplayName } from '../lib/db'
+import { listMembers, updateMyDisplayName, updateMyEmail } from '../lib/db'
 import { app } from '../lib/app'
 import { TopBar } from '../components/TopBar'
+
+type ThemePref = 'light' | 'dark' | 'system'
+
+function getThemePref(): ThemePref {
+  return (localStorage.getItem('theme') as ThemePref) ?? 'system'
+}
+
+function applyTheme(pref: ThemePref) {
+  localStorage.setItem('theme', pref)
+  const dark =
+    pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.dataset.theme = dark ? 'dark' : ''
+}
 
 interface ProfileProps {
   user: User
@@ -14,6 +27,8 @@ export function Profile({ user, workspaces }: ProfileProps) {
   const [memberships, setMemberships] = useState<Map<string, Member> | null>(null)
   const [editingWs, setEditingWs] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [themePref, setThemePref] = useState<ThemePref>(getThemePref)
 
   useEffect(() => {
     let cancelled = false
@@ -35,21 +50,29 @@ export function Profile({ user, workspaces }: ProfileProps) {
     return () => { cancelled = true }
   }, [user.id, workspaces])
 
-  async function handleSaveName(wsId: string) {
-    const trimmed = editName.trim()
-    if (!trimmed) {
-      setEditingWs(null)
-      return
+  async function handleSave(wsId: string) {
+    const trimmedName = editName.trim()
+    const trimmedEmail = editEmail.trim()
+    const member = memberships?.get(wsId)
+    if (trimmedName && trimmedName !== member?.displayName) {
+      await updateMyDisplayName(wsId, trimmedName)
     }
-    await updateMyDisplayName(wsId, trimmed)
+    if (trimmedEmail !== (member?.email ?? '')) {
+      await updateMyEmail(wsId, trimmedEmail)
+    }
     setMemberships((prev) => {
       if (!prev) return prev
       const next = new Map(prev)
       const m = next.get(wsId)
-      if (m) next.set(wsId, { ...m, displayName: trimmed })
+      if (m) next.set(wsId, { ...m, displayName: trimmedName || m.displayName, email: trimmedEmail || undefined })
       return next
     })
     setEditingWs(null)
+  }
+
+  function handleThemeChange(pref: ThemePref) {
+    setThemePref(pref)
+    applyTheme(pref)
   }
 
   return (
@@ -108,12 +131,18 @@ export function Profile({ user, workspaces }: ProfileProps) {
                         <div className="truncate text-sm font-medium text-[var(--ink)]">
                           {ws.name}
                         </div>
-                        <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--muted)]">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
                           <span className="uppercase tracking-wider">{ws.role}</span>
                           {member && (
                             <>
                               <span>·</span>
-                              <span>Display name: {member.displayName}</span>
+                              <span>{member.displayName}</span>
+                            </>
+                          )}
+                          {member?.email && (
+                            <>
+                              <span>·</span>
+                              <span>{member.email}</span>
                             </>
                           )}
                         </div>
@@ -123,37 +152,57 @@ export function Profile({ user, workspaces }: ProfileProps) {
                           onClick={() => {
                             setEditingWs(ws.id)
                             setEditName(member.displayName)
+                            setEditEmail(member.email ?? '')
                           }}
                           className="shrink-0 rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
                         >
-                          Edit name
+                          Edit
                         </button>
                       )}
                     </div>
                     {editingWs === ws.id && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <input
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveName(ws.id)
-                            if (e.key === 'Escape') setEditingWs(null)
-                          }}
-                          autoFocus
-                          className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
-                        />
-                        <button
-                          onClick={() => handleSaveName(ws.id)}
-                          className="rounded-full bg-[var(--ink)] px-3 py-1 text-xs font-semibold text-[var(--paper)]"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingWs(null)}
-                          className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--muted)]"
-                        >
-                          Cancel
-                        </button>
+                      <div className="mt-3 space-y-2">
+                        <div>
+                          <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Display name</label>
+                          <input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSave(ws.id)
+                              if (e.key === 'Escape') setEditingWs(null)
+                            }}
+                            autoFocus
+                            className="mt-1 w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Email</label>
+                          <input
+                            type="email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSave(ws.id)
+                              if (e.key === 'Escape') setEditingWs(null)
+                            }}
+                            placeholder="you@example.com"
+                            className="mt-1 w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)] placeholder:text-[var(--muted)]"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            onClick={() => handleSave(ws.id)}
+                            className="rounded-full bg-[var(--ink)] px-3 py-1 text-xs font-semibold text-[var(--paper)]"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingWs(null)}
+                            className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--muted)]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     )}
                   </li>
@@ -161,6 +210,27 @@ export function Profile({ user, workspaces }: ProfileProps) {
               })}
             </ul>
           )}
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            Theme
+          </h2>
+          <div className="mt-4 flex gap-2">
+            {(['light', 'dark', 'system'] as const).map((opt) => (
+              <button
+                key={opt}
+                onClick={() => handleThemeChange(opt)}
+                className={`rounded-full border px-4 py-1.5 text-xs capitalize ${
+                  themePref === opt
+                    ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] font-semibold'
+                    : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="mt-10">

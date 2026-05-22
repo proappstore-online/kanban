@@ -9,9 +9,11 @@
     <meta name="theme-color" content="#000000" id="theme-color" />
     <meta name="darkreader-lock" />
     <script>
-      if (matchMedia('(prefers-color-scheme: dark)').matches) {
-        document.documentElement.dataset.theme = 'dark';
-      }
+      (function() {
+        var pref = localStorage.getItem('theme') || 'system';
+        var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.dataset.theme = 'dark';
+      })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

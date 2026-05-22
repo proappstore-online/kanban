@@ -3,11 +3,13 @@ import type { User } from '@proappstore/sdk'
 import type { BoardSummary, Feature, WorkspaceWithRole } from '../types'
 import {
   createBoard,
+  createInvite,
   deleteBoard,
   listBoards,
   listFeatures,
   setBoardFeature,
 } from '../lib/db'
+import { toast } from '../lib/toast'
 import { TopBar } from '../components/TopBar'
 
 interface BoardsProps {
@@ -30,6 +32,22 @@ export function Boards({
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined)
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [inviteBusy, setInviteBusy] = useState(false)
+
+  const canManage = workspace.role === 'owner' || workspace.role === 'admin'
+
+  async function handleInvite() {
+    if (inviteBusy) return
+    setInviteBusy(true)
+    try {
+      const inv = await createInvite(workspace.id, 'member')
+      const url = `${location.origin}/#/invite/${inv.code}`
+      await navigator.clipboard?.writeText(url)
+      toast.success('Invite link copied!')
+    } finally {
+      setInviteBusy(false)
+    }
+  }
 
   useEffect(() => {
     Promise.all([listBoards(workspace.id), listFeatures(workspace.id)])
@@ -106,12 +124,23 @@ export function Boards({
         center={<>{workspace.name}</>}
         settingsHref={`#/w/${workspace.slug}/settings`}
         right={
-          <button
-            onClick={onMyTasks}
-            className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
-          >
-            My tasks
-          </button>
+          <>
+            {canManage && (
+              <button
+                onClick={handleInvite}
+                disabled={inviteBusy}
+                className="rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent-deep)] hover:opacity-80 disabled:opacity-40"
+              >
+                {inviteBusy ? 'Creating…' : 'Invite'}
+              </button>
+            )}
+            <button
+              onClick={onMyTasks}
+              className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+            >
+              My tasks
+            </button>
+          </>
         }
       />
       <main className="mx-auto max-w-[1540px] px-4 py-8 sm:px-6">

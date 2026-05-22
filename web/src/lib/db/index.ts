@@ -30,7 +30,7 @@ export {
   transferOwnership,
 } from './workspaces'
 
-export { listMembers, updateMemberRole, removeMember, updateMyDisplayName } from './members'
+export { listMembers, updateMemberRole, removeMember, updateMyDisplayName, updateMyEmail } from './members'
 
 export { createInvite, listInvites, revokeInvite, redeemInvite } from './invites'
 

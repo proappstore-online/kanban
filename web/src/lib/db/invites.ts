@@ -2,6 +2,8 @@ import { app } from '../app'
 import type { Invite, Role, Workspace } from '../../types'
 import { ensureMigrated, rid } from './core'
 import { rowToWorkspace } from './workspaces'
+import { logActivity } from './activity'
+import { fireBoardPatch } from '../realtime'
 
 interface InviteRow {
   id: string
@@ -125,6 +127,18 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
     `UPDATE invites SET accepted_at = ?, accepted_by = ? WHERE id = ?`,
     [now, me.id, invite.id],
   )
+
+  // Notify existing members via activity feed on all boards
+  const { rows: boardIds } = await app.db.query<{ id: string }>(
+    `SELECT id FROM boards WHERE tenant_id = ? AND archived = 0`,
+    [invite.tenant_id],
+  )
+  for (const b of boardIds) {
+    logActivity(invite.tenant_id, b.id, 'member.joined', {
+      displayName: me.login ?? 'New member',
+    }).catch(() => {})
+    fireBoardPatch(b.id, { kind: 'activity.added' })
+  }
 
   const { rows: ws } = await app.db.query<WorkspaceRow>(
     `SELECT * FROM workspaces WHERE id = ? LIMIT 1`,

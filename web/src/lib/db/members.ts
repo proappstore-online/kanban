@@ -61,3 +61,13 @@ export async function updateMyDisplayName(tenantId: string, displayName: string)
     [displayName, tenantId, me.id],
   )
 }
+
+export async function updateMyEmail(tenantId: string, email: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  await app.db.execute(
+    `UPDATE members SET email = ? WHERE tenant_id = ? AND user_id = ?`,
+    [email || null, tenantId, me.id],
+  )
+}
