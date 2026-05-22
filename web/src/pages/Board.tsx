@@ -279,6 +279,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       etaAt?: number | null
     },
   ) {
+    const cardTitle = patch.title ?? board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)?.title
     updateCardLocal(cardId, listId, {
       ...(patch.title !== undefined && { title: patch.title }),
       ...(patch.description !== undefined && { description: patch.description ?? undefined }),
@@ -291,8 +292,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     })
     await updateCard(workspace.id, cardId, patch)
     broadcast({ kind: 'card.updated', cardId })
-    const card = board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)
-    logAndAnnounce('card.updated', { title: card?.title, changed: Object.keys(patch) }, cardId)
+    logAndAnnounce('card.updated', { title: cardTitle, changed: Object.keys(patch) }, cardId)
   }
 
   async function handleLabelsChange(cardId: string, listId: string, labels: Label[]) {
@@ -355,6 +355,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
 
   async function handlePostComment(cardId: string, body: string) {
     if (!board) return
+    const cardTitle = board.lists.flatMap((l) => l.cards).find((c) => c.id === cardId)?.title
     try {
       const result = await addComment(workspace.id, board.id, cardId, body, members)
       setOpenCardComments((prev) => [...prev, result.comment])
@@ -371,11 +372,10 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         }
       })
       broadcast({ kind: 'card.comment-added', cardId })
-      const card = board.lists.flatMap((l) => l.cards).find((c) => c.id === cardId)
       logAndAnnounce(
         'comment.added',
         {
-          cardTitle: card?.title,
+          cardTitle,
           snippet: body.length > 80 ? body.slice(0, 80) + '…' : body,
           mentioned: result.mentionedUserIds.length,
         },

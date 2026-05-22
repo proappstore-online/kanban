@@ -187,7 +187,7 @@ export function CommentsSection({
           className="w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
         {acState.open && candidates.length > 0 && (
-          <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-40 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper)] shadow-[var(--shadow-soft)]">
+          <ul className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-40 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper)] shadow-[var(--shadow-soft)]">
             {candidates.map((m, idx) => (
               <li key={m.id}>
                 <button

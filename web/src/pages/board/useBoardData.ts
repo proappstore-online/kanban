@@ -129,12 +129,31 @@ export function useBoardData(
           return
         case 'card.comment-added':
         case 'card.comment-deleted':
+          // Refetch the open card's comments if it matches, and always
+          // refetch the board for comment count updates on card previews.
+          // But skip the full refetch if the comment is for the open card
+          // and no other state is affected — the comment list handles it.
           if (openCardId === patch.cardId) {
             listComments(tenantId, patch.cardId)
               .then(setOpenCardComments)
               .catch(() => {})
           }
-          refetch().catch(() => {})
+          // Update comment counts on card previews
+          setBoard((b) => {
+            if (!b) return b
+            const delta = patch.kind === 'card.comment-added' ? 1 : -1
+            return {
+              ...b,
+              lists: b.lists.map((l) => ({
+                ...l,
+                cards: l.cards.map((c) =>
+                  c.id === patch.cardId
+                    ? { ...c, commentCount: Math.max(0, c.commentCount + delta) }
+                    : c,
+                ),
+              })),
+            }
+          })
           return
         case 'activity.added':
           if (showActivity) refetchActivity().catch(() => {})
