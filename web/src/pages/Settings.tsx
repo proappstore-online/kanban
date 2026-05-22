@@ -5,6 +5,7 @@ import {
   createFeature,
   createInvite,
   deleteFeature,
+  deleteWorkspace,
   leaveWorkspace,
   listFeatures,
   listInvites,
@@ -58,6 +59,18 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
     if (!confirm(`Leave "${workspace.name}"? You'll lose access until invited back.`)) return
     await leaveWorkspace(workspace.id)
     onLeft()
+  }
+
+  async function handleDelete() {
+    if (!isOwner) return
+    if (!confirm(`Delete "${workspace.name}"? All boards, cards, comments, and members will be permanently removed.`)) return
+    if (!confirm(`Are you absolutely sure? This cannot be undone.`)) return
+    try {
+      await deleteWorkspace(workspace.id)
+      onLeft()
+    } catch {
+      alert('Could not delete workspace.')
+    }
   }
 
   async function handleTransfer(member: Member) {
@@ -220,6 +233,14 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
               >
                 {isOwner ? 'Leave (owner must transfer first)' : 'Leave workspace'}
               </button>
+              {isOwner && (
+                <button
+                  onClick={handleDelete}
+                  className="rounded-full border border-[var(--error)] px-3 py-1.5 text-xs font-semibold text-[var(--error)] hover:bg-[var(--error)]/10"
+                >
+                  Delete workspace
+                </button>
+              )}
             </div>
           </div>
         </section>

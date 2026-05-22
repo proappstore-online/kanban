@@ -26,6 +26,7 @@ export {
   listMyWorkspaces,
   createWorkspace,
   renameWorkspace,
+  deleteWorkspace,
   leaveWorkspace,
   transferOwnership,
 } from './workspaces'

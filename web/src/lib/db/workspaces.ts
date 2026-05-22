@@ -100,6 +100,38 @@ export async function leaveWorkspace(workspaceId: string): Promise<void> {
  * target is already the owner. The previous owner is demoted to `admin`
  * so they don't suddenly lose all management capability.
  */
+/**
+ * Owner-only: permanently delete a workspace and all its data.
+ * Cascades through boards → lists → cards → comments/mentions/labels/assignees/checklist.
+ */
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  await ensureMigrated()
+  const me = app.auth.user
+  if (!me) throw new Error('Sign in required.')
+  // Verify caller is owner
+  const { rows } = await app.db.query<{ owner_user_id: string }>(
+    `SELECT owner_user_id FROM workspaces WHERE id = ?`,
+    [workspaceId],
+  )
+  if (!rows[0] || rows[0].owner_user_id !== me.id) throw new Error('Only the owner can delete a workspace.')
+  // Cascade delete all children by tenant_id
+  const tid = workspaceId
+  await app.db.execute(`DELETE FROM mentions WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM comments WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE tenant_id = ?)`, [tid])
+  await app.db.execute(`DELETE FROM card_assignees WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM checklist_items WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM cards WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM labels WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM activity WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM lists WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM boards WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM features WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM invites WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM members WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM workspaces WHERE id = ?`, [tid])
+}
+
 export async function transferOwnership(
   workspaceId: string,
   newOwnerUserId: string,
