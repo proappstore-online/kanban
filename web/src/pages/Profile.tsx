@@ -8,11 +8,11 @@ import { TopBar } from '../components/TopBar'
 type ThemePref = 'light' | 'dark' | 'system'
 
 function getThemePref(): ThemePref {
-  return (localStorage.getItem('theme') as ThemePref) ?? 'system'
+  return (localStorage.getItem('fas:theme') as ThemePref) ?? 'system'
 }
 
 function applyTheme(pref: ThemePref) {
-  localStorage.setItem('theme', pref)
+  localStorage.setItem('fas:theme', pref)
   const dark =
     pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.dataset.theme = dark ? 'dark' : ''
@@ -68,11 +68,6 @@ export function Profile({ user, workspaces }: ProfileProps) {
       return next
     })
     setEditingWs(null)
-  }
-
-  function handleThemeChange(pref: ThemePref) {
-    setThemePref(pref)
-    applyTheme(pref)
   }
 
   return (
@@ -224,7 +219,7 @@ export function Profile({ user, workspaces }: ProfileProps) {
             {(['light', 'dark', 'system'] as const).map((opt) => (
               <button
                 key={opt}
-                onClick={() => handleThemeChange(opt)}
+                onClick={() => { setThemePref(opt); applyTheme(opt) }}
                 className={`rounded-full border px-4 py-1.5 text-xs capitalize ${
                   themePref === opt
                     ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] font-semibold'

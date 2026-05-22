@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { User } from '@proappstore/sdk'
+import { useProAuth } from '@proappstore/sdk/hooks'
 import { app } from './lib/app'
 import { SignIn } from './pages/SignIn'
 import { Onboarding } from './pages/Onboarding'
@@ -68,32 +68,25 @@ function findWorkspace(
 }
 
 export default function App() {
-  const [ready, setReady] = useState(false)
-  const [user, setUser] = useState<User | null>(null)
+  const { user, loading } = useProAuth(app)
   const [route, setRoute] = useState<Route>(parseHash())
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[] | null>(null)
 
+  // Restore hash saved before OAuth redirect (invite links, deep links).
   useEffect(() => {
-    let cancelled = false
-    app.auth.init().finally(() => {
-      if (cancelled) return
-      // Restore hash saved before OAuth redirect (invite links, deep links).
-      const saved = sessionStorage.getItem('kanban:returnHash')
-      if (saved) {
-        sessionStorage.removeItem('kanban:returnHash')
-        location.hash = saved
-      }
-      setRoute(parseHash())
-      setReady(true)
-    })
-    const unsub = app.auth.onChange((u) => setUser(u))
+    if (loading) return
+    const saved = sessionStorage.getItem('kanban:returnHash')
+    if (saved) {
+      sessionStorage.removeItem('kanban:returnHash')
+      location.hash = saved
+    }
+    setRoute(parseHash())
+  }, [loading])
+
+  useEffect(() => {
     const onHash = () => setRoute(parseHash())
     window.addEventListener('hashchange', onHash)
-    return () => {
-      cancelled = true
-      unsub()
-      window.removeEventListener('hashchange', onHash)
-    }
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   // Refetch workspace list whenever auth changes or route returns to the picker.
@@ -136,7 +129,7 @@ export default function App() {
   // notification stack is mounted exactly once and survives across
   // hash-only route changes.
   const content = (() => {
-    if (!ready) {
+    if (loading) {
       return <Loading />
     }
     if (!user) return <SignIn />

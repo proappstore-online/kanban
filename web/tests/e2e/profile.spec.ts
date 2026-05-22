@@ -107,7 +107,7 @@ test.describe('Profile page', () => {
     await darkBtn.click()
 
     // Verify localStorage was set
-    const theme = await page.evaluate(() => localStorage.getItem('theme'))
+    const theme = await page.evaluate(() => localStorage.getItem('fas:theme'))
     expect(theme).toBe('dark')
 
     // Verify data-theme attribute was applied
@@ -116,7 +116,7 @@ test.describe('Profile page', () => {
 
     // Switch to light
     await page.getByRole('button', { name: /^light$/i }).click()
-    const lightTheme = await page.evaluate(() => localStorage.getItem('theme'))
+    const lightTheme = await page.evaluate(() => localStorage.getItem('fas:theme'))
     expect(lightTheme).toBe('light')
     const lightData = await page.evaluate(() => document.documentElement.dataset.theme)
     expect(lightData).toBe('')

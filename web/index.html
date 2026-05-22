@@ -10,7 +10,7 @@
     <meta name="darkreader-lock" />
     <script>
       (function() {
-        var pref = localStorage.getItem('theme') || 'system';
+        var pref = localStorage.getItem('fas:theme') || 'system';
         var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.dataset.theme = 'dark';
       })();
