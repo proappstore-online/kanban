@@ -117,6 +117,7 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setWorkspaces(null)
+      localStorage.removeItem('kanban:lastBoard')
       return
     }
     let cancelled = false

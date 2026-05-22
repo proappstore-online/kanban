@@ -6,7 +6,6 @@ import {
   listComments,
   listMembers,
 } from '../../lib/db'
-import { app } from '../../lib/app'
 import { useBoardRoom, type BoardPatch } from '../../lib/realtime'
 
 interface UseBoardDataResult {
@@ -67,7 +66,7 @@ export function useBoardData(
         setMembers(m)
       })
       .catch(() => {
-        if (!cancelled && app.auth.user) setBoard(null)
+        if (!cancelled) setBoard(null)
       })
     return () => {
       cancelled = true

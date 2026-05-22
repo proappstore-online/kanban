@@ -89,6 +89,8 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     setRenamingBoard(false)
     setShowArchived(false)
     setArchivedCards(null)
+    setShowShortcuts(false)
+    initialCardAppliedRef.current = null
   }, [boardId])
 
   // Fetch the archived-cards list when the panel opens. Cached on the

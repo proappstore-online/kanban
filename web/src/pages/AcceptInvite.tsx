@@ -25,8 +25,7 @@ export function AcceptInvite({ code, onJoined }: AcceptInviteProps) {
           return
         }
         setState({ kind: 'ok', name: ws.name })
-        // Brief pause so the user sees what they joined.
-        setTimeout(() => onJoined(ws), 600)
+        setTimeout(() => { if (!cancelled) onJoined(ws) }, 600)
       })
       .catch(() => {
         if (!cancelled) setState({ kind: 'bad' })
