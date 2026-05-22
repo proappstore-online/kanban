@@ -113,6 +113,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   // moveCard requests for the same card — second one would race against
   // the first and leave position math unstable.
   const movingCardsRef = useRef<Set<string>>(new Set())
+  const togglingAssigneesRef = useRef<Set<string>>(new Set())
 
   const {
     board,
@@ -155,6 +156,11 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       history.replaceState(null, '', `${location.pathname}${location.search}${wanted}`)
     }
   }, [openCard, workspace.slug, boardId])
+
+  // Clear lastBoard if the board doesn't exist (prevents redirect loops).
+  useEffect(() => {
+    if (board === null) localStorage.removeItem('kanban:lastBoard')
+  }, [board])
 
   /**
    * Write an activity row (fire-and-forget) and broadcast an
@@ -199,7 +205,6 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     return <Loading />
   }
   if (board === null) {
-    localStorage.removeItem('kanban:lastBoard')
     return (
       <div className="min-h-[100dvh]">
         <TopBar user={user} left={<BackButton onClick={onBack} />} />
@@ -218,11 +223,16 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     setNewListTitle('')
     setAddingList(false)
     if (!t) return
-    const lastPos = board.lists.length > 0 ? board.lists[board.lists.length - 1].position : null
-    const next = await createList(workspace.id, board.id, t, lastPos)
-    setBoard((b) => (b ? { ...b, lists: [...b.lists, next] } : b))
-    broadcast({ kind: 'list.created', listId: next.id })
-    logAndAnnounce('list.created', { listId: next.id, title: t })
+    try {
+      const lastPos = board.lists.length > 0 ? board.lists[board.lists.length - 1].position : null
+      const next = await createList(workspace.id, board.id, t, lastPos)
+      setBoard((b) => (b ? { ...b, lists: [...b.lists, next] } : b))
+      broadcast({ kind: 'list.created', listId: next.id })
+      logAndAnnounce('list.created', { listId: next.id, title: t })
+    } catch {
+      toast.error("Couldn't add list — try again.")
+      refetch().catch(() => {})
+    }
   }
 
   async function commitRenameBoard() {
@@ -232,49 +242,77 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     if (!t || t === board.name) return
     const prev = board.name
     setBoard((b) => (b ? { ...b, name: t } : b))
-    await renameBoard(workspace.id, board.id, t)
-    broadcast({ kind: 'board.renamed', name: t })
-    logAndAnnounce('board.renamed', { from: prev, to: t })
+    try {
+      await renameBoard(workspace.id, board.id, t)
+      broadcast({ kind: 'board.renamed', name: t })
+      logAndAnnounce('board.renamed', { from: prev, to: t })
+    } catch {
+      setBoard((b) => (b ? { ...b, name: prev } : b))
+      toast.error("Couldn't rename board.")
+    }
   }
 
   async function handleSetBackground(bg: string | null) {
     if (!board) return
+    const prev = board.background
     setBoard((b) => (b ? { ...b, background: bg ?? undefined } : b))
-    await setBoardBackground(workspace.id, board.id, bg)
-    broadcast({ kind: 'board.background', background: bg })
+    try {
+      await setBoardBackground(workspace.id, board.id, bg)
+      broadcast({ kind: 'board.background', background: bg })
+    } catch {
+      setBoard((b) => (b ? { ...b, background: prev } : b))
+    }
   }
 
   async function handleAddCard(list: List, title: string) {
     if (!board) return
-    const lastPos = list.cards.length > 0 ? list.cards[list.cards.length - 1].position : null
-    const card = await createCard(workspace.id, board.id, list.id, title, lastPos)
-    setBoard((b) => {
-      if (!b) return b
-      return {
-        ...b,
-        lists: b.lists.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)),
-      }
-    })
-    broadcast({ kind: 'card.created', listId: list.id, cardId: card.id })
-    logAndAnnounce('card.created', { title, listTitle: list.title }, card.id)
+    try {
+      const lastPos = list.cards.length > 0 ? list.cards[list.cards.length - 1].position : null
+      const card = await createCard(workspace.id, board.id, list.id, title, lastPos)
+      setBoard((b) => {
+        if (!b) return b
+        return {
+          ...b,
+          lists: b.lists.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)),
+        }
+      })
+      broadcast({ kind: 'card.created', listId: list.id, cardId: card.id })
+      logAndAnnounce('card.created', { title, listTitle: list.title }, card.id)
+    } catch {
+      toast.error("Couldn't add card — try again.")
+    }
   }
 
   async function handleRenameList(listId: string, title: string) {
+    const prev = board?.lists.find((l) => l.id === listId)?.title
     setBoard((b) => {
       if (!b) return b
       return { ...b, lists: b.lists.map((l) => (l.id === listId ? { ...l, title } : l)) }
     })
-    await renameList(workspace.id, listId, title)
-    broadcast({ kind: 'list.renamed', listId, title })
-    logAndAnnounce('list.renamed', { listId, title })
+    try {
+      await renameList(workspace.id, listId, title)
+      broadcast({ kind: 'list.renamed', listId, title })
+      logAndAnnounce('list.renamed', { listId, title })
+    } catch {
+      setBoard((b) => {
+        if (!b) return b
+        return { ...b, lists: b.lists.map((l) => (l.id === listId ? { ...l, title: prev ?? l.title } : l)) }
+      })
+      toast.error("Couldn't rename list.")
+    }
   }
 
   async function handleDeleteList(listId: string) {
     const list = board?.lists.find((l) => l.id === listId)
     setBoard((b) => (b ? { ...b, lists: b.lists.filter((l) => l.id !== listId) } : b))
-    await deleteList(workspace.id, listId)
-    broadcast({ kind: 'list.deleted', listId })
-    logAndAnnounce('list.deleted', { listId, title: list?.title })
+    try {
+      await deleteList(workspace.id, listId)
+      broadcast({ kind: 'list.deleted', listId })
+      logAndAnnounce('list.deleted', { listId, title: list?.title })
+    } catch {
+      toast.error("Couldn't delete list — reloading.")
+      refetch().catch(() => {})
+    }
   }
 
   function updateCardLocal(cardId: string, listId: string, patch: Partial<Card>) {
@@ -317,21 +355,31 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       ...(patch.dueAt !== undefined && { dueAt: patch.dueAt ?? undefined }),
       ...(patch.etaAt !== undefined && { etaAt: patch.etaAt ?? undefined }),
     })
-    await updateCard(workspace.id, cardId, patch)
-    broadcast({ kind: 'card.updated', cardId })
-    logAndAnnounce('card.updated', { title: cardTitle, changed: Object.keys(patch) }, cardId)
+    try {
+      await updateCard(workspace.id, cardId, patch)
+      broadcast({ kind: 'card.updated', cardId })
+      logAndAnnounce('card.updated', { title: cardTitle, changed: Object.keys(patch) }, cardId)
+    } catch {
+      toast.error("Couldn't save card — reloading.")
+      refetch().catch(() => {})
+    }
   }
 
   async function handleLabelsChange(cardId: string, listId: string, labels: Label[]) {
     if (!board) return
     updateCardLocal(cardId, listId, { labels })
-    const colors: LabelColor[] = Array.from(new Set(labels.map((l) => l.color)))
-    const ensured = await ensureBoardLabels(workspace.id, board.id, colors)
-    const ids = labels
-      .map((l) => ensured.find((e) => e.color === l.color)?.id)
-      .filter((x): x is string => !!x)
-    await setCardLabels(workspace.id, cardId, ids)
-    broadcast({ kind: 'card.labels-changed', cardId })
+    try {
+      const colors: LabelColor[] = Array.from(new Set(labels.map((l) => l.color)))
+      const ensured = await ensureBoardLabels(workspace.id, board.id, colors)
+      const ids = labels
+        .map((l) => ensured.find((e) => e.color === l.color)?.id)
+        .filter((x): x is string => !!x)
+      await setCardLabels(workspace.id, cardId, ids)
+      broadcast({ kind: 'card.labels-changed', cardId })
+    } catch {
+      toast.error("Couldn't update labels — reloading.")
+      refetch().catch(() => {})
+    }
   }
 
   /**
@@ -353,40 +401,54 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   ) {
     const positioned = items.map((it, idx) => ({ ...it, position: idx }))
     updateCardLocal(cardId, listId, { checklist: positioned })
-    await setChecklist(workspace.id, cardId, positioned)
-    broadcast({ kind: 'card.checklist-changed', cardId })
+    try {
+      await setChecklist(workspace.id, cardId, positioned)
+      broadcast({ kind: 'card.checklist-changed', cardId })
+    } catch {
+      toast.error("Couldn't update checklist — reloading.")
+      refetch().catch(() => {})
+    }
   }
 
   async function handleAssigneeToggle(cardId: string, listId: string, member: Member) {
     if (!board) return
-    const list = board.lists.find((l) => l.id === listId)
-    const card = list?.cards.find((c) => c.id === cardId)
-    if (!card) return
-    const exists = card.assignees.some((a) => a.userId === member.userId)
-    const nextAssignees = exists
-      ? card.assignees.filter((a) => a.userId !== member.userId)
-      : [
-          ...card.assignees,
-          { userId: member.userId, displayName: member.displayName, avatarUrl: member.avatarUrl },
-        ]
-    updateCardLocal(cardId, listId, { assignees: nextAssignees })
-    if (exists) await removeAssignee(workspace.id, cardId, member.userId)
-    else await addAssignee(workspace.id, cardId, member.userId)
-    broadcast({ kind: 'card.assignees-changed', cardId })
-    // Push notification when assigning someone else
-    if (!exists && member.userId !== user.id) {
-      notifyUser(member.userId, {
-        title: `${user.login} assigned you`,
-        body: `Card: "${card.title}"`,
-        url: `${location.origin}/#/w/${workspace.slug}/board/${board.id}/card/${cardId}`,
-        tag: `assign:${cardId}`,
-      })
+    const key = `${cardId}:${member.userId}`
+    if (togglingAssigneesRef.current.has(key)) return
+    togglingAssigneesRef.current.add(key)
+    try {
+      const list = board.lists.find((l) => l.id === listId)
+      const card = list?.cards.find((c) => c.id === cardId)
+      if (!card) return
+      const exists = card.assignees.some((a) => a.userId === member.userId)
+      const nextAssignees = exists
+        ? card.assignees.filter((a) => a.userId !== member.userId)
+        : [
+            ...card.assignees,
+            { userId: member.userId, displayName: member.displayName, avatarUrl: member.avatarUrl },
+          ]
+      updateCardLocal(cardId, listId, { assignees: nextAssignees })
+      if (exists) await removeAssignee(workspace.id, cardId, member.userId)
+      else await addAssignee(workspace.id, cardId, member.userId)
+      broadcast({ kind: 'card.assignees-changed', cardId })
+      if (!exists && member.userId !== user.id) {
+        notifyUser(member.userId, {
+          title: `${user.login} assigned you`,
+          body: `Card: "${card.title}"`,
+          url: `${location.origin}/#/w/${workspace.slug}/board/${board.id}/card/${cardId}`,
+          tag: `assign:${cardId}`,
+        })
+      }
+      logAndAnnounce(
+        exists ? 'card.unassigned' : 'card.assigned',
+        { cardTitle: card.title, member: member.displayName },
+        cardId,
+      )
+    } catch {
+      toast.error("Couldn't update assignees — reloading.")
+      refetch().catch(() => {})
+    } finally {
+      togglingAssigneesRef.current.delete(key)
     }
-    logAndAnnounce(
-      exists ? 'card.unassigned' : 'card.assigned',
-      { cardTitle: card.title, member: member.displayName },
-      cardId,
-    )
   }
 
   async function handlePostComment(cardId: string, body: string) {

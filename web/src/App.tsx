@@ -287,8 +287,9 @@ export default function App() {
 }
 
 function NotInWorkspace() {
-  // Clear saved board so the user doesn't get stuck in a loop.
-  localStorage.removeItem('kanban:lastBoard')
+  useEffect(() => {
+    localStorage.removeItem('kanban:lastBoard')
+  }, [])
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-6 text-center">
       <div>
