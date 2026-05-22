@@ -1,5 +1,15 @@
 import { app } from '../lib/app'
 
+function handleSignIn() {
+  // The SDK drops location.hash during OAuth redirect (it writes its own
+  // #fas_session=… on return). Save the current hash so we can restore it
+  // after auth completes — this preserves invite links and deep links.
+  if (location.hash && location.hash !== '#') {
+    sessionStorage.setItem('kanban:returnHash', location.hash)
+  }
+  app.auth.signIn()
+}
+
 export function SignIn() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-6">
@@ -9,7 +19,7 @@ export function SignIn() {
           Team boards with real-time collaboration. Sign in to get started.
         </p>
         <button
-          onClick={() => app.auth.signIn()}
+          onClick={handleSignIn}
           className="mt-6 w-full rounded-2xl bg-[var(--ink)] py-3 text-sm font-semibold text-[var(--paper)] hover:opacity-90"
         >
           Sign in with GitHub

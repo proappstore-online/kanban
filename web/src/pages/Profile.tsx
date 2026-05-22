@@ -163,31 +163,35 @@ export function Profile({ user, workspaces }: ProfileProps) {
                     {editingWs === ws.id && (
                       <div className="mt-3 space-y-2">
                         <div>
-                          <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Display name</label>
-                          <input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSave(ws.id)
-                              if (e.key === 'Escape') setEditingWs(null)
-                            }}
-                            autoFocus
-                            className="mt-1 w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
-                          />
+                          <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
+                            Display name
+                            <input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSave(ws.id)
+                                if (e.key === 'Escape') setEditingWs(null)
+                              }}
+                              autoFocus
+                              className="mt-1 block w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
+                            />
+                          </label>
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Email</label>
-                          <input
-                            type="email"
-                            value={editEmail}
-                            onChange={(e) => setEditEmail(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSave(ws.id)
-                              if (e.key === 'Escape') setEditingWs(null)
-                            }}
-                            placeholder="you@example.com"
-                            className="mt-1 w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)] placeholder:text-[var(--muted)]"
-                          />
+                          <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
+                            Email
+                            <input
+                              type="email"
+                              value={editEmail}
+                              onChange={(e) => setEditEmail(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSave(ws.id)
+                                if (e.key === 'Escape') setEditingWs(null)
+                              }}
+                              placeholder="you@example.com"
+                              className="mt-1 block w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)] placeholder:text-[var(--muted)]"
+                            />
+                          </label>
                         </div>
                         <div className="flex items-center gap-2 pt-1">
                           <button

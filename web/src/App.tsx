@@ -77,6 +77,12 @@ export default function App() {
     let cancelled = false
     app.auth.init().finally(() => {
       if (cancelled) return
+      // Restore hash saved before OAuth redirect (invite links, deep links).
+      const saved = sessionStorage.getItem('kanban:returnHash')
+      if (saved) {
+        sessionStorage.removeItem('kanban:returnHash')
+        location.hash = saved
+      }
       setRoute(parseHash())
       setReady(true)
     })

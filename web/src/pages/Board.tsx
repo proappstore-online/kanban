@@ -721,6 +721,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           ) : (
             <button
               onClick={() => setAddingList(true)}
+              aria-label="Add a list"
               title="Add a list"
               className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--line-strong)] text-lg text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] self-start mt-3"
             >
