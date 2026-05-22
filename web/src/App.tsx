@@ -72,13 +72,17 @@ export default function App() {
   const [route, setRoute] = useState<Route>(parseHash())
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[] | null>(null)
 
-  // Restore hash saved before OAuth redirect (invite links, deep links).
+  // Restore hash saved before OAuth redirect (invite links, deep links),
+  // or the last-visited board from a previous session.
   useEffect(() => {
     if (loading) return
-    const saved = sessionStorage.getItem('kanban:returnHash')
-    if (saved) {
+    const oauthHash = sessionStorage.getItem('kanban:returnHash')
+    if (oauthHash) {
       sessionStorage.removeItem('kanban:returnHash')
-      location.hash = saved
+      location.hash = oauthHash
+    } else if (!location.hash || location.hash === '#') {
+      const lastBoard = localStorage.getItem('kanban:lastBoard')
+      if (lastBoard) location.hash = lastBoard
     }
     setRoute(parseHash())
   }, [loading])
@@ -126,6 +130,13 @@ export default function App() {
     history.replaceState(null, '', `${location.pathname}${location.search}${replaced}`)
     setRoute(parseHash())
   }, [workspaces, route])
+
+  // Remember last board so the user lands there on next visit.
+  useEffect(() => {
+    if (route.name === 'board') {
+      localStorage.setItem('kanban:lastBoard', location.hash)
+    }
+  }, [route])
 
   // Compute the per-route page content, then wrap with Toasts so the
   // notification stack is mounted exactly once and survives across

@@ -731,7 +731,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           </SortableContext>
 
           {addingList ? (
-            <div className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none">
+            <div className="hidden w-72 shrink-0 flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:flex">
               <input
                 autoFocus
                 value={newListTitle}
@@ -777,7 +777,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
               onClick={() => setAddingList(true)}
               aria-label="Add a list"
               title="Add a list"
-              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--line-strong)] text-lg text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] self-start mt-3"
+              className="hidden size-10 shrink-0 items-center justify-center rounded-full border border-[var(--line-strong)] text-lg text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] self-start mt-3 sm:flex"
             >
               +
             </button>
