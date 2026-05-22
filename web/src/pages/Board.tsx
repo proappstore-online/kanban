@@ -657,7 +657,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <main className="flex flex-1 snap-x snap-mandatory gap-4 overflow-x-auto scroll-pl-4 px-4 py-6 sm:snap-none sm:px-6">
+        <main className="flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto scroll-pl-2 px-2 py-4 sm:gap-4 sm:scroll-pl-4 sm:px-6 sm:py-6 sm:snap-none">
           {board.lists.map((list) => {
             const visible = list.cards.filter((c) => matchesFilter(c, filter, user.id))
             return (

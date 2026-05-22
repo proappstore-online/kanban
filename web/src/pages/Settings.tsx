@@ -177,7 +177,7 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
         }
         center={<>Settings — {workspace.name}</>}
       />
-      <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-[900px] px-2 py-4 sm:px-6 sm:py-8">
         <section>
           <SectionHeader>Workspace</SectionHeader>
           <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4">

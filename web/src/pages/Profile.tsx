@@ -89,7 +89,7 @@ export function Profile({ user, workspaces }: ProfileProps) {
         }
         center={<>Profile</>}
       />
-      <main className="mx-auto max-w-[600px] px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-[600px] px-2 py-4 sm:px-6 sm:py-8">
         <div className="flex flex-col items-center gap-4">
           {user.avatarUrl ? (
             <img

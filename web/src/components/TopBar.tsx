@@ -20,7 +20,7 @@ interface TopBarProps {
 export function TopBar({ user, left, center, right, settingsHref }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--glass-strong)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1540px] items-center gap-2 px-3 py-3 sm:gap-3 sm:px-6">
+      <div className="mx-auto flex max-w-[1540px] items-center gap-2 px-2 py-2 sm:gap-3 sm:px-6 sm:py-3">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {left}
           <a

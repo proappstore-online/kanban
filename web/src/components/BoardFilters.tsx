@@ -8,11 +8,13 @@ import type { BoardWithLists, Label, Member } from '../types'
  * kind of the card's list.
  */
 export interface BoardFilter {
+  text: string
   assignee: 'all' | 'unassigned' | 'me' | string // userId
   labelIds: Set<string>
 }
 
 export const EMPTY_FILTER: BoardFilter = {
+  text: '',
   assignee: 'all',
   labelIds: new Set(),
 }
@@ -44,12 +46,20 @@ export function BoardFilters({
   visibleCards,
 }: BoardFiltersProps) {
   const labels = boardLabels(board)
-  const active = value.assignee !== 'all' || value.labelIds.size > 0
+  const active = value.assignee !== 'all' || value.labelIds.size > 0 || value.text !== ''
   const me = members.find((m) => m.userId === selfUserId)
 
   return (
-    <div className="border-b border-[var(--line)] bg-[var(--glass)]/40 px-4 py-2 sm:px-6">
+    <div className="border-b border-[var(--line)] bg-[var(--glass)]/40 px-2 py-2 sm:px-6">
       <div className="mx-auto flex max-w-[1540px] flex-wrap items-center gap-2 text-xs">
+        <input
+          type="text"
+          value={value.text}
+          onChange={(e) => onChange({ ...value, text: e.target.value })}
+          placeholder="Search cards…"
+          aria-label="Search cards"
+          className="w-28 min-w-0 rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1 text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:w-40 focus:border-[var(--line-strong)] transition-[width] sm:w-36 sm:focus:w-48"
+        />
         <AssigneePicker
           members={members}
           me={me}
@@ -271,10 +281,14 @@ function labelStyles(color: Label['color']): { bg: string; fg: string } {
  * can share the same predicate.
  */
 export function matchesFilter(
-  card: { assignees: { userId: string }[]; labels: { id: string }[] },
+  card: { title: string; assignees: { userId: string }[]; labels: { id: string }[] },
   filter: BoardFilter,
   selfUserId: string,
 ): boolean {
+  // Text search — case-insensitive substring match on title
+  if (filter.text) {
+    if (!card.title.toLowerCase().includes(filter.text.toLowerCase())) return false
+  }
   // Assignee
   if (filter.assignee === 'me') {
     if (!card.assignees.some((a) => a.userId === selfUserId)) return false

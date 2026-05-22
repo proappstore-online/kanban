@@ -33,7 +33,7 @@ export function Workspaces({ user, workspaces, onOpen, onCreated }: WorkspacesPr
   return (
     <div className="min-h-[100dvh]">
       <TopBar user={user} />
-      <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-[1100px] px-2 py-4 sm:px-6 sm:py-8">
         <h1 className="display-font text-2xl font-bold text-[var(--ink)]">Your workspaces</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Pick a workspace to open its boards, or create a new one for another team.

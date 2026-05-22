@@ -131,7 +131,7 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
         }
         center={<>My tasks — {workspace.name}</>}
       />
-      <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-[1100px] px-2 py-4 sm:px-6 sm:py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="display-font text-2xl font-bold text-[var(--ink)]">
             Assigned to me

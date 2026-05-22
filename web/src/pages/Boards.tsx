@@ -143,7 +143,7 @@ export function Boards({
           </>
         }
       />
-      <main className="mx-auto max-w-[1540px] px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-[1540px] px-2 py-4 sm:px-6 sm:py-8">
         <h1 className="display-font text-2xl font-bold text-[var(--ink)]">Boards</h1>
 
         {grouped === null ? (
