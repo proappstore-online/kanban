@@ -72,8 +72,7 @@ export default function App() {
   const [route, setRoute] = useState<Route>(parseHash())
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[] | null>(null)
 
-  // Restore hash on cold start only (first load after auth resolves).
-  // OAuth return hash takes priority, then last-visited board.
+  // Restore OAuth return hash on cold start (before workspaces load).
   const restoredRef = useRef(false)
   useEffect(() => {
     if (loading || restoredRef.current) return
@@ -82,12 +81,30 @@ export default function App() {
     if (oauthHash) {
       sessionStorage.removeItem('kanban:returnHash')
       location.hash = oauthHash
-    } else if (!location.hash || location.hash === '#') {
-      const lastBoard = localStorage.getItem('kanban:lastBoard')
-      if (lastBoard) location.hash = lastBoard
     }
     setRoute(parseHash())
   }, [loading])
+
+  // Restore last-visited board AFTER workspaces load so we can validate
+  // the saved slug actually exists. Prevents "Not in workspace" on first
+  // login or after workspace deletion.
+  const lastBoardRestoredRef = useRef(false)
+  useEffect(() => {
+    if (!workspaces || lastBoardRestoredRef.current) return
+    if (location.hash && location.hash !== '#') return // user already navigated
+    lastBoardRestoredRef.current = true
+    const lastBoard = localStorage.getItem('kanban:lastBoard')
+    if (!lastBoard) return
+    // Validate the workspace slug from the saved hash
+    const m = lastBoard.match(/^#\/w\/([^/]+)/)
+    if (!m) return
+    const ws = findWorkspace(workspaces, decodeURIComponent(m[1]))
+    if (ws) {
+      location.hash = lastBoard
+    } else {
+      localStorage.removeItem('kanban:lastBoard')
+    }
+  }, [workspaces])
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash())
