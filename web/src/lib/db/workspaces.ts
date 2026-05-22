@@ -116,18 +116,20 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   if (!rows[0] || rows[0].owner_user_id !== me.id) throw new Error('Only the owner can delete a workspace.')
   // Cascade delete all children by tenant_id
   const tid = workspaceId
+  // Leaf tables first, then parents. All have tenant_id.
+  // D1 doesn't enforce FK constraints but this order is correct regardless.
   await app.db.execute(`DELETE FROM mentions WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM comments WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE tenant_id = ?)`, [tid])
+  await app.db.execute(`DELETE FROM card_labels WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM card_assignees WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM checklist_items WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM activity WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM invites WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM cards WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM labels WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM activity WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM lists WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM boards WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM features WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM invites WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM members WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM workspaces WHERE id = ?`, [tid])
 }

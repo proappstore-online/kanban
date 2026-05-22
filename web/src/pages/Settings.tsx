@@ -67,6 +67,7 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
     if (!confirm(`Are you absolutely sure? This cannot be undone.`)) return
     try {
       await deleteWorkspace(workspace.id)
+      localStorage.removeItem('kanban:lastBoard')
       onLeft()
     } catch {
       alert('Could not delete workspace.')
