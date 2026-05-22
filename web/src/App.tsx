@@ -146,6 +146,7 @@ export default function App() {
         <AcceptInvite
           code={route.code}
           onJoined={(ws) => {
+            setWorkspaces((prev) => [{ ...ws, role: 'member' }, ...(prev ?? [])])
             location.hash = `#/w/${ws.slug}`
           }}
         />
