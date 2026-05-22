@@ -575,7 +575,8 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     }
   }
 
-  const bgStyle = board.background ? { background: board.background } : undefined
+  const resolvedBg = resolveBoardBg(board.background)
+  const bgStyle = resolvedBg ? { background: resolvedBg } : undefined
 
   return (
     <div className="flex min-h-[100dvh] flex-col" style={bgStyle}>
@@ -793,15 +794,22 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   )
 }
 
-const BOARD_BACKGROUNDS: { label: string; value: string | null }[] = [
-  { label: 'None', value: null },
-  { label: 'Warm', value: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%)' },
-  { label: 'Cool', value: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 50%, #93c5fd 100%)' },
-  { label: 'Mint', value: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 50%, #6ee7b7 100%)' },
-  { label: 'Sunset', value: 'linear-gradient(135deg, #fecaca 0%, #fda4af 50%, #fb923c 100%)' },
-  { label: 'Grape', value: 'linear-gradient(135deg, #e9d5ff 0%, #c4b5fd 50%, #a78bfa 100%)' },
-  { label: 'Slate', value: 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 50%, #94a3b8 100%)' },
-]
+const BOARD_BG_PRESETS: Record<string, { light: string; dark: string; swatch: string }> = {
+  warm:   { light: 'linear-gradient(135deg, #fef3c7, #fde68a, #fcd34d)', dark: 'linear-gradient(135deg, #451a03, #78350f, #92400e)', swatch: '#fde68a' },
+  cool:   { light: 'linear-gradient(135deg, #dbeafe, #bfdbfe, #93c5fd)', dark: 'linear-gradient(135deg, #0c1929, #172554, #1e3a5f)', swatch: '#93c5fd' },
+  mint:   { light: 'linear-gradient(135deg, #d1fae5, #a7f3d0, #6ee7b7)', dark: 'linear-gradient(135deg, #052e16, #064e3b, #065f46)', swatch: '#6ee7b7' },
+  sunset: { light: 'linear-gradient(135deg, #fecaca, #fda4af, #fb923c)', dark: 'linear-gradient(135deg, #450a0a, #7f1d1d, #9a3412)', swatch: '#fb923c' },
+  grape:  { light: 'linear-gradient(135deg, #e9d5ff, #c4b5fd, #a78bfa)', dark: 'linear-gradient(135deg, #2e1065, #3b0764, #4c1d95)', swatch: '#a78bfa' },
+  slate:  { light: 'linear-gradient(135deg, #e2e8f0, #cbd5e1, #94a3b8)', dark: 'linear-gradient(135deg, #0f172a, #1e293b, #334155)', swatch: '#94a3b8' },
+}
+
+function resolveBoardBg(key: string | undefined): string | undefined {
+  if (!key) return undefined
+  const preset = BOARD_BG_PRESETS[key]
+  if (!preset) return key // legacy: raw CSS gradient stored before this change
+  const isDark = document.documentElement.dataset.theme === 'dark'
+  return isDark ? preset.dark : preset.light
+}
 
 function BackgroundPicker({
   current,
@@ -822,6 +830,8 @@ function BackgroundPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  const keys = Object.keys(BOARD_BG_PRESETS)
+
   return (
     <div ref={ref} className="relative hidden sm:block">
       <button
@@ -832,24 +842,33 @@ function BackgroundPicker({
       >
         <span
           className="size-4 rounded-full border border-[var(--line)]"
-          style={{ background: current || 'var(--paper)' }}
+          style={{ background: current ? (BOARD_BG_PRESETS[current]?.swatch ?? 'var(--paper)') : 'var(--paper)' }}
         />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-40 mt-2 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 shadow-[var(--shadow-soft)]">
           <div className="grid grid-cols-4 gap-2">
-            {BOARD_BACKGROUNDS.map((bg) => (
+            <button
+              onClick={() => { onChange(null); setOpen(false) }}
+              className={`flex size-8 items-center justify-center rounded-full border-2 transition-transform hover:scale-110 ${
+                !current ? 'border-[var(--ink)]' : 'border-transparent'
+              }`}
+              title="None"
+            >
+              <span className="size-6 rounded-full border border-[var(--line)] bg-[var(--paper)]" />
+            </button>
+            {keys.map((key) => (
               <button
-                key={bg.label}
-                onClick={() => { onChange(bg.value); setOpen(false) }}
+                key={key}
+                onClick={() => { onChange(key); setOpen(false) }}
                 className={`flex size-8 items-center justify-center rounded-full border-2 transition-transform hover:scale-110 ${
-                  (current ?? null) === bg.value ? 'border-[var(--ink)]' : 'border-transparent'
+                  current === key ? 'border-[var(--ink)]' : 'border-transparent'
                 }`}
-                title={bg.label}
+                title={key.charAt(0).toUpperCase() + key.slice(1)}
               >
                 <span
                   className="size-6 rounded-full border border-[var(--line)]"
-                  style={{ background: bg.value || 'var(--paper)' }}
+                  style={{ background: BOARD_BG_PRESETS[key].swatch }}
                 />
               </button>
             ))}

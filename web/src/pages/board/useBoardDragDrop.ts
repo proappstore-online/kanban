@@ -130,7 +130,7 @@ export function useBoardDragDrop({
       setBoard({ ...board, lists: reordered })
       const prevPos = newIndex > 0 ? reordered[newIndex - 1].position : null
       const nextPos = newIndex < reordered.length - 1 ? reordered[newIndex + 1].position : null
-      moveList(tenantId, fromColId, prevPos, nextPos)
+      moveList(tenantId, board.id, fromColId, prevPos, nextPos)
         .then((position) => {
           setBoard((b) => {
             if (!b) return b

@@ -59,6 +59,7 @@ export async function getStatusListId(
 
 export async function moveList(
   tenantId: string,
+  boardId: string,
   listId: string,
   prevPos: number | null,
   nextPos: number | null,
@@ -69,6 +70,7 @@ export async function moveList(
     `UPDATE lists SET position = ? WHERE id = ? AND tenant_id = ?`,
     [position, listId, tenantId],
   )
+  await touchBoard(tenantId, boardId)
   return position
 }
 
