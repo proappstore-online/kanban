@@ -16,6 +16,7 @@ import {
   transferOwnership,
   updateMemberRole,
 } from '../lib/db'
+import { app } from '../lib/app'
 import { TopBar } from '../components/TopBar'
 
 interface SettingsProps {
@@ -119,8 +120,10 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
 
   useEffect(() => {
     refresh().catch(() => {
-      setMembers([])
-      setInvites([])
+      if (app.auth.user) {
+        setMembers([])
+        setInvites([])
+      }
     })
   }, [workspace.id])
 

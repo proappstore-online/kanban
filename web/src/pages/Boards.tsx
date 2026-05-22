@@ -9,6 +9,7 @@ import {
   listFeatures,
   setBoardFeature,
 } from '../lib/db'
+import { app } from '../lib/app'
 import { toast } from '../lib/toast'
 import { TopBar } from '../components/TopBar'
 
@@ -56,8 +57,10 @@ export function Boards({
         setFeatures(fs)
       })
       .catch(() => {
-        setBoards([])
-        setFeatures([])
+        if (app.auth.user) {
+          setBoards([])
+          setFeatures([])
+        }
       })
   }, [workspace.id])
 

@@ -3,6 +3,7 @@ import type { User } from '@proappstore/sdk'
 import type { AssignedTask, ListKind, WorkspaceWithRole } from '../types'
 import { STATUS_KINDS, STATUS_LABEL } from '../types'
 import { getStatusListId, listMyTasks, logActivity, moveCard } from '../lib/db'
+import { app } from '../lib/app'
 import { fireBoardPatch } from '../lib/realtime'
 import { toast } from '../lib/toast'
 import { TopBar } from '../components/TopBar'
@@ -35,7 +36,7 @@ export function MyTasks({ user, workspace, onBack, onOpenBoard }: MyTasksProps) 
   const refetch = useCallback(() => {
     listMyTasks(workspace.id)
       .then(setTasks)
-      .catch(() => setTasks([]))
+      .catch(() => { if (app.auth.user) setTasks([]) })
   }, [workspace.id])
 
   useEffect(() => {

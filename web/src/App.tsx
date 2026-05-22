@@ -102,7 +102,9 @@ export default function App() {
         if (!cancelled) setWorkspaces(ws)
       })
       .catch(() => {
-        if (!cancelled) setWorkspaces([])
+        // If the session was cleared by a 401, don't show empty state —
+        // the auth change will redirect to sign-in.
+        if (!cancelled && app.auth.user) setWorkspaces([])
       })
     return () => {
       cancelled = true
