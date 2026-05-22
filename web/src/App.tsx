@@ -213,6 +213,11 @@ export default function App() {
             setWorkspaces((prev) => prev?.filter((w) => w.id !== ws.id) ?? null)
             location.hash = ''
           }}
+          onWorkspaceChanged={(patch) => {
+            setWorkspaces((prev) =>
+              prev?.map((w) => (w.id === ws.id ? { ...w, ...patch } : w)) ?? null,
+            )
+          }}
         />
       )
     }

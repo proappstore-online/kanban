@@ -34,7 +34,8 @@ export function AcceptInvite({ code, onJoined }: AcceptInviteProps) {
     return () => {
       cancelled = true
     }
-  }, [code, onJoined])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-6 text-center">

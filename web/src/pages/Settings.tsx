@@ -23,11 +23,12 @@ interface SettingsProps {
   workspace: WorkspaceWithRole
   onBack: () => void
   onLeft: () => void
+  onWorkspaceChanged?: (patch: Partial<WorkspaceWithRole>) => void
 }
 
 const ROLES: Role[] = ['owner', 'admin', 'member', 'guest']
 
-export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
+export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }: SettingsProps) {
   const [members, setMembers] = useState<Member[] | null>(null)
   const [invites, setInvites] = useState<Invite[] | null>(null)
   const [features, setFeatures] = useState<Feature[] | null>(null)
@@ -45,7 +46,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
       return
     }
     await renameWorkspace(workspace.id, trimmed)
-    workspace.name = trimmed
+    onWorkspaceChanged?.({ name: trimmed })
   }
 
   async function handleLeave() {
@@ -69,8 +70,7 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
       return
     }
     await transferOwnership(workspace.id, member.userId)
-    workspace.role = 'admin'
-    workspace.ownerUserId = member.userId
+    onWorkspaceChanged?.({ role: 'admin', ownerUserId: member.userId })
     setMembers((prev) =>
       prev?.map((m) => {
         if (m.userId === member.userId) return { ...m, role: 'owner' as Role }
@@ -150,6 +150,10 @@ export function Settings({ user, workspace, onBack, onLeft }: SettingsProps) {
   async function handleRemove(member: Member) {
     if (!canManage) return
     if (member.userId === workspace.ownerUserId) return
+    if (member.userId === user.id) {
+      alert('Use "Leave workspace" to remove yourself.')
+      return
+    }
     if (!confirm(`Remove ${member.displayName} from ${workspace.name}?`)) return
     await removeMember(workspace.id, member.id)
     setMembers((prev) => prev?.filter((m) => m.id !== member.id) ?? null)

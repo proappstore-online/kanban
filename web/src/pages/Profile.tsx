@@ -80,12 +80,12 @@ export function Profile({ user, workspaces }: ProfileProps) {
       <TopBar
         user={user}
         left={
-          <button
-            onClick={() => history.back()}
+          <a
+            href="#"
             className="rounded-full border border-[var(--line-strong)] bg-[var(--glass)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
           >
-            ← Back
-          </button>
+            ← Workspaces
+          </a>
         }
         center={<>Profile</>}
       />
