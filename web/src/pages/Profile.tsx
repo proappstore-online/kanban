@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@proappstore/sdk'
+import { useProNotifications } from '@proappstore/sdk/hooks'
 import type { Member, WorkspaceWithRole } from '../types'
 import { listMembers, updateMyDisplayName, updateMyEmail } from '../lib/db'
 import { app } from '../lib/app'
@@ -29,6 +30,7 @@ export function Profile({ user, workspaces }: ProfileProps) {
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [themePref, setThemePref] = useState<ThemePref>(getThemePref)
+  const { permission, isSubscribed, subscribe, unsubscribe, loading: notifLoading } = useProNotifications(app)
 
   useEffect(() => {
     let cancelled = false
@@ -231,6 +233,32 @@ export function Profile({ user, workspaces }: ProfileProps) {
             ))}
           </div>
         </section>
+
+        {permission !== 'denied' && (
+          <section className="mt-10">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+              Notifications
+            </h2>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={() => (isSubscribed ? unsubscribe() : subscribe())}
+                disabled={notifLoading}
+                className={`rounded-full border px-4 py-1.5 text-xs font-semibold disabled:opacity-40 ${
+                  isSubscribed
+                    ? 'border-[var(--mint)] bg-[var(--mint-soft)] text-[var(--mint-deep)]'
+                    : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {notifLoading ? 'Loading...' : isSubscribed ? 'Notifications on' : 'Enable notifications'}
+              </button>
+              {isSubscribed && (
+                <span className="text-xs text-[var(--muted)]">
+                  You'll be notified when someone @mentions you or assigns you a card.
+                </span>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="mt-10">
           <button

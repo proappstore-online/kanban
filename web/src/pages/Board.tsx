@@ -53,6 +53,7 @@ import {
 } from '../components/BoardFilters'
 import { useBoardData } from './board/useBoardData'
 import { useBoardDragDrop } from './board/useBoardDragDrop'
+import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts'
 
 interface BoardProps {
   boardId: string
@@ -74,6 +75,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   const [filter, setFilter] = useState<BoardFilter>(EMPTY_FILTER)
   const [showArchived, setShowArchived] = useState(false)
   const [archivedCards, setArchivedCards] = useState<ArchivedCardSummary[] | null>(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
   // Reset per-board UI state when navigating between boards. Without this,
   // a filter set on board A stays applied when you open board B in the
@@ -175,6 +177,19 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     broadcast,
     onMovedAcross: (cardId, title, from, to) =>
       logAndAnnounce('card.moved', { title, from, to }, cardId),
+  })
+
+  useKeyboardShortcuts({
+    onNewCard: () => {
+      // Click the first list's "Add a card" button
+      const btn = document.querySelector<HTMLButtonElement>('button[class*="rounded-xl"][class*="text-left"]')
+      btn?.click()
+    },
+    onSearch: () => {
+      const input = document.querySelector<HTMLInputElement>('input[aria-label="Search cards"]')
+      input?.focus()
+    },
+    onHelp: () => setShowShortcuts((v) => !v),
   })
 
   // Loading / not-found guards before the mutation handlers reference `board`.
@@ -789,6 +804,32 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           onRestore={handleRestoreCard}
           onDeleteForever={handleDeleteForever}
         />
+      )}
+
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xs rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-6 shadow-[var(--shadow-soft)]"
+          >
+            <h2 className="text-sm font-semibold text-[var(--ink)]">Keyboard shortcuts</h2>
+            <ul className="mt-4 space-y-2 text-sm text-[var(--muted)]">
+              <li className="flex justify-between"><span>Add a card</span><kbd className="rounded border border-[var(--line)] bg-[var(--paper-deep)] px-1.5 py-0.5 text-xs font-mono text-[var(--ink)]">n</kbd></li>
+              <li className="flex justify-between"><span>Search cards</span><kbd className="rounded border border-[var(--line)] bg-[var(--paper-deep)] px-1.5 py-0.5 text-xs font-mono text-[var(--ink)]">/</kbd></li>
+              <li className="flex justify-between"><span>Show shortcuts</span><kbd className="rounded border border-[var(--line)] bg-[var(--paper-deep)] px-1.5 py-0.5 text-xs font-mono text-[var(--ink)]">?</kbd></li>
+              <li className="flex justify-between"><span>Close modal</span><kbd className="rounded border border-[var(--line)] bg-[var(--paper-deep)] px-1.5 py-0.5 text-xs font-mono text-[var(--ink)]">Esc</kbd></li>
+            </ul>
+            <button
+              onClick={() => setShowShortcuts(false)}
+              className="mt-5 w-full rounded-full border border-[var(--line-strong)] py-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
