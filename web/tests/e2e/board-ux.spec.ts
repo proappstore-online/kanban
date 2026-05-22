@@ -94,7 +94,7 @@ test.describe('Launched column card cap', () => {
     await expect(page.getByText('Done task 11', { exact: true })).not.toBeVisible()
 
     // "Show all 15 cards" button should be visible
-    const showAll = page.getByRole('button', { name: /show all 15 cards/i })
+    const showAll = page.getByRole('button', { name: 'Show all 15 cards', exact: true })
     await expect(showAll).toBeVisible()
 
     // Click expand
@@ -105,7 +105,7 @@ test.describe('Launched column card cap', () => {
     await expect(page.getByText('Done task 15', { exact: true })).toBeVisible()
 
     // Collapse button should appear
-    const collapse = page.getByRole('button', { name: /show recent 10 only/i })
+    const collapse = page.getByRole('button', { name: 'Show recent 10 only', exact: true })
     await expect(collapse).toBeVisible()
 
     // Collapse it back

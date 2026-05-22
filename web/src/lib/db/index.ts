@@ -38,13 +38,14 @@ export {
   listBoards,
   createBoard,
   setBoardFeature,
+  setBoardBackground,
   renameBoard,
   deleteBoard,
 } from './boards'
 
 export { getBoardFull } from './board-full'
 
-export { createList, renameList, deleteList, getStatusListId } from './lists'
+export { createList, renameList, moveList, deleteList, getStatusListId } from './lists'
 
 export {
   createCard,

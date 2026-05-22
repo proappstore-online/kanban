@@ -10,7 +10,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { BoardWithLists, List } from '../../types'
-import { moveCard } from '../../lib/db'
+import { moveCard, moveList } from '../../lib/db'
 import type { BoardPatch } from '../../lib/realtime'
 
 interface UseBoardDragDropArgs {
@@ -72,6 +72,8 @@ export function useBoardDragDrop({
     if (!over || !board) return
     const activeId = String(active.id)
     const overId = String(over.id)
+    // Skip card-level logic for column drags
+    if (activeId.startsWith('col:')) return
     if (activeId === overId) return
 
     setBoard((prev) => {
@@ -115,6 +117,33 @@ export function useBoardDragDrop({
     const overId = over ? String(over.id) : null
     const origin = dragOriginRef.current
     dragOriginRef.current = null
+
+    // Column reorder
+    if (activeId.startsWith('col:') && overId?.startsWith('col:')) {
+      const fromColId = activeId.slice(4)
+      const toColId = overId.slice(4)
+      if (fromColId === toColId || !board) return
+      const oldIndex = board.lists.findIndex((l) => l.id === fromColId)
+      const newIndex = board.lists.findIndex((l) => l.id === toColId)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(board.lists, oldIndex, newIndex)
+      setBoard({ ...board, lists: reordered })
+      const prevPos = newIndex > 0 ? reordered[newIndex - 1].position : null
+      const nextPos = newIndex < reordered.length - 1 ? reordered[newIndex + 1].position : null
+      moveList(tenantId, fromColId, prevPos, nextPos)
+        .then((position) => {
+          setBoard((b) => {
+            if (!b) return b
+            return {
+              ...b,
+              lists: b.lists.map((l) => (l.id === fromColId ? { ...l, position } : l)),
+            }
+          })
+          broadcast({ kind: 'list.moved' })
+        })
+        .catch(() => refetch().catch(() => {}))
+      return
+    }
 
     // Compute the final in-memory state synchronously: apply any same-list
     // reorder, then derive what to persist from the resulting snapshot.

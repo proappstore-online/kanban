@@ -117,6 +117,12 @@ export function useBoardData(
         case 'board.renamed':
           setBoard((b) => (b ? { ...b, name: patch.name } : b))
           return
+        case 'board.background':
+          setBoard((b) => (b ? { ...b, background: patch.background ?? undefined } : b))
+          return
+        case 'list.moved':
+          refetch().catch(() => {})
+          return
         case 'list.renamed':
           setBoard((b) => {
             if (!b) return b

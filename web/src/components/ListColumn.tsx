@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { Card, List, ListKind } from '../types'
 import { CardItem } from './CardItem'
 
@@ -31,10 +32,28 @@ export function ListColumn({
   const [titleDraft, setTitleDraft] = useState(list.title)
   const [expanded, setExpanded] = useState(false)
 
-  const { setNodeRef } = useDroppable({
+  const { setNodeRef: setDropRef } = useDroppable({
     id: `list:${list.id}`,
     data: { type: 'list', listId: list.id },
   })
+
+  const {
+    attributes: sortableAttrs,
+    listeners: sortableListeners,
+    setNodeRef: setSortableRef,
+    transform: sortableTransform,
+    transition: sortableTransition,
+    isDragging: isSortableDragging,
+  } = useSortable({
+    id: `col:${list.id}`,
+    data: { type: 'column', listId: list.id },
+  })
+
+  const columnStyle = {
+    transform: CSS.Translate.toString(sortableTransform),
+    transition: sortableTransition,
+    opacity: isSortableDragging ? 0.4 : 1,
+  }
 
   function commitAdd() {
     const t = newTitle.trim()
@@ -51,8 +70,21 @@ export function ListColumn({
   }
 
   return (
-    <div className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none">
+    <div
+      ref={setSortableRef}
+      style={columnStyle}
+      {...sortableAttrs}
+      className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none"
+    >
       <div className="flex items-center gap-2 px-1">
+        <button
+          {...sortableListeners}
+          className="cursor-grab touch-none text-[var(--muted)] opacity-40 hover:opacity-100 active:cursor-grabbing"
+          aria-label="Drag to reorder list"
+          title="Drag to reorder"
+        >
+          ⠿
+        </button>
         {editingTitle ? (
           <input
             autoFocus
@@ -89,7 +121,7 @@ export function ListColumn({
       </div>
 
       <SortableContext items={list.cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <div ref={setNodeRef} className="flex min-h-[2rem] flex-col gap-2">
+        <div ref={setDropRef} className="flex min-h-[2rem] flex-col gap-2">
           {list.cards.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--line)] px-3 py-4 text-center text-[11px] text-[var(--muted)]">
               Drop a card here, or add one below

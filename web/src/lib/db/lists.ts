@@ -57,6 +57,21 @@ export async function getStatusListId(
   return rows[0]?.id ?? null
 }
 
+export async function moveList(
+  tenantId: string,
+  listId: string,
+  prevPos: number | null,
+  nextPos: number | null,
+): Promise<number> {
+  await ensureMigrated()
+  const position = between(prevPos, nextPos)
+  await app.db.execute(
+    `UPDATE lists SET position = ? WHERE id = ? AND tenant_id = ?`,
+    [position, listId, tenantId],
+  )
+  return position
+}
+
 export async function deleteList(tenantId: string, listId: string): Promise<void> {
   await ensureMigrated()
   // SQL inlined per child table so static scanners see each statement is

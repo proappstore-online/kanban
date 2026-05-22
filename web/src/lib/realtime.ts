@@ -24,7 +24,9 @@ export type BoardPatch =
   | { kind: 'list.created'; listId: string }
   | { kind: 'list.renamed'; listId: string; title: string }
   | { kind: 'list.deleted'; listId: string }
+  | { kind: 'list.moved' }
   | { kind: 'board.renamed'; name: string }
+  | { kind: 'board.background'; background: string | null }
   | { kind: 'activity.added' }
 
 const ROOM_PREFIX = 'board:'

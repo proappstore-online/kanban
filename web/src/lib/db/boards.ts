@@ -110,6 +110,18 @@ export async function renameBoard(
   )
 }
 
+export async function setBoardBackground(
+  tenantId: string,
+  boardId: string,
+  background: string | null,
+): Promise<void> {
+  await ensureMigrated()
+  await app.db.execute(
+    `UPDATE boards SET background = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+    [background, Date.now(), boardId, tenantId],
+  )
+}
+
 export async function deleteBoard(tenantId: string, boardId: string): Promise<void> {
   await ensureMigrated()
   // Cascade by hand — D1 doesn't enforce FK cascades. Each subquery scopes

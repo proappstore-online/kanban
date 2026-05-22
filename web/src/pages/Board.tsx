@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { DndContext, closestCorners } from '@dnd-kit/core'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import type { User } from '@proappstore/sdk'
 import type {
   ActivityKind,
@@ -28,6 +29,7 @@ import {
   renameBoard,
   renameBoardLabel,
   renameList,
+  setBoardBackground,
   setCardLabels,
   setChecklist,
   unarchiveCard,
@@ -215,6 +217,13 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     await renameBoard(workspace.id, board.id, t)
     broadcast({ kind: 'board.renamed', name: t })
     logAndAnnounce('board.renamed', { from: prev, to: t })
+  }
+
+  async function handleSetBackground(bg: string | null) {
+    if (!board) return
+    setBoard((b) => (b ? { ...b, background: bg ?? undefined } : b))
+    await setBoardBackground(workspace.id, board.id, bg)
+    broadcast({ kind: 'board.background', background: bg })
   }
 
   async function handleAddCard(list: List, title: string) {
@@ -566,8 +575,10 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     }
   }
 
+  const bgStyle = board.background ? { background: board.background } : undefined
+
   return (
-    <div className="flex min-h-[100dvh] flex-col">
+    <div className="flex min-h-[100dvh] flex-col" style={bgStyle}>
       <TopBar
         user={user}
         settingsHref={`#/w/${workspace.slug}/settings`}
@@ -600,6 +611,10 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         right={
           <div className="flex items-center gap-2">
             <PresenceBar peers={peers} selfId={user.id} />
+            <BackgroundPicker
+              current={board.background}
+              onChange={handleSetBackground}
+            />
             <button
               onClick={() => setShowArchived((v) => !v)}
               className={`hidden rounded-full border px-3 py-1 text-xs sm:inline-block ${
@@ -658,6 +673,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         onDragEnd={handleDragEnd}
       >
         <main className="flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto scroll-pl-2 px-2 py-4 sm:gap-4 sm:scroll-pl-4 sm:px-6 sm:py-6 sm:snap-none">
+          <SortableContext items={board.lists.map((l) => `col:${l.id}`)} strategy={horizontalListSortingStrategy}>
           {board.lists.map((list) => {
             const visible = list.cards.filter((c) => matchesFilter(c, filter, user.id))
             return (
@@ -675,6 +691,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
               />
             )
           })}
+          </SortableContext>
 
           {addingList ? (
             <div className="flex w-[calc(100vw-2rem)] shrink-0 snap-start flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:w-72 sm:snap-align-none">
@@ -771,6 +788,73 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           onRestore={handleRestoreCard}
           onDeleteForever={handleDeleteForever}
         />
+      )}
+    </div>
+  )
+}
+
+const BOARD_BACKGROUNDS: { label: string; value: string | null }[] = [
+  { label: 'None', value: null },
+  { label: 'Warm', value: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%)' },
+  { label: 'Cool', value: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 50%, #93c5fd 100%)' },
+  { label: 'Mint', value: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 50%, #6ee7b7 100%)' },
+  { label: 'Sunset', value: 'linear-gradient(135deg, #fecaca 0%, #fda4af 50%, #fb923c 100%)' },
+  { label: 'Grape', value: 'linear-gradient(135deg, #e9d5ff 0%, #c4b5fd 50%, #a78bfa 100%)' },
+  { label: 'Slate', value: 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 50%, #94a3b8 100%)' },
+]
+
+function BackgroundPicker({
+  current,
+  onChange,
+}: {
+  current?: string
+  onChange: (bg: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative hidden sm:block">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex size-7 items-center justify-center rounded-full border border-[var(--line-strong)] text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+        title="Board background"
+        aria-label="Board background"
+      >
+        <span
+          className="size-4 rounded-full border border-[var(--line)]"
+          style={{ background: current || 'var(--paper)' }}
+        />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-2 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 shadow-[var(--shadow-soft)]">
+          <div className="grid grid-cols-4 gap-2">
+            {BOARD_BACKGROUNDS.map((bg) => (
+              <button
+                key={bg.label}
+                onClick={() => { onChange(bg.value); setOpen(false) }}
+                className={`flex size-8 items-center justify-center rounded-full border-2 transition-transform hover:scale-110 ${
+                  (current ?? null) === bg.value ? 'border-[var(--ink)]' : 'border-transparent'
+                }`}
+                title={bg.label}
+              >
+                <span
+                  className="size-6 rounded-full border border-[var(--line)]"
+                  style={{ background: bg.value || 'var(--paper)' }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
