@@ -7,6 +7,7 @@ import { app } from '../lib/app'
 import { TopBar } from '../components/TopBar'
 
 type ThemePref = 'light' | 'dark' | 'system'
+type TextSize = 'default' | 'lg' | 'sm'
 
 function getThemePref(): ThemePref {
   return (localStorage.getItem('fas:theme') as ThemePref) ?? 'system'
@@ -17,6 +18,21 @@ function applyTheme(pref: ThemePref) {
   const dark =
     pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.dataset.theme = dark ? 'dark' : ''
+}
+
+function getTextSize(): TextSize {
+  const v = localStorage.getItem('stores-text-size')
+  if (v === 'lg' || v === 'sm') return v
+  return 'default'
+}
+
+function applyTextSize(size: TextSize) {
+  localStorage.setItem('stores-text-size', size)
+  if (size === 'default') {
+    delete document.documentElement.dataset.text
+  } else {
+    document.documentElement.dataset.text = size
+  }
 }
 
 interface ProfileProps {
@@ -30,6 +46,7 @@ export function Profile({ user, workspaces }: ProfileProps) {
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [themePref, setThemePref] = useState<ThemePref>(getThemePref)
+  const [textSize, setTextSize] = useState<TextSize>(getTextSize)
   const { permission, isSubscribed, subscribe, unsubscribe, loading: notifLoading } = useProNotifications(app)
 
   useEffect(() => {
@@ -231,6 +248,32 @@ export function Profile({ user, workspaces }: ProfileProps) {
                 }`}
               >
                 {opt}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            Text size
+          </h2>
+          <div className="mt-4 flex gap-2">
+            {([
+              { key: 'sm' as TextSize, label: 'A\u2212', title: 'Small' },
+              { key: 'default' as TextSize, label: 'A', title: 'Default' },
+              { key: 'lg' as TextSize, label: 'A+', title: 'Large' },
+            ]).map(({ key, label, title }) => (
+              <button
+                key={key}
+                onClick={() => { setTextSize(key); applyTextSize(key) }}
+                title={title}
+                className={`rounded-full border px-4 py-1.5 text-xs ${
+                  textSize === key
+                    ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] font-semibold'
+                    : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {label}
               </button>
             ))}
           </div>

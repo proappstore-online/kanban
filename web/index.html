@@ -13,6 +13,8 @@
         var pref = localStorage.getItem('fas:theme') || 'system';
         var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.dataset.theme = 'dark';
+        var text = localStorage.getItem('stores-text-size');
+        if (text === 'lg' || text === 'sm') document.documentElement.dataset.text = text;
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

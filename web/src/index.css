@@ -177,6 +177,12 @@ button:active {
   transform: scale(0.985);
 }
 
+/* Text size scaling — matches SDK's TextSizeToggle convention.
+   Applied via data-text attribute on <html>. Uses rem so it
+   cascades to all font-size declarations. */
+:root[data-text='lg'] { font-size: 118.75%; } /* 19px base */
+:root[data-text='sm'] { font-size: 87.5%; }   /* 14px base */
+
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--sky) 52%, white);
