@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProAuth } from '@proappstore/sdk/hooks'
 import { app } from './lib/app'
 import { SignIn } from './pages/SignIn'
@@ -72,10 +72,12 @@ export default function App() {
   const [route, setRoute] = useState<Route>(parseHash())
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[] | null>(null)
 
-  // Restore hash saved before OAuth redirect (invite links, deep links),
-  // or the last-visited board from a previous session.
+  // Restore hash on cold start only (first load after auth resolves).
+  // OAuth return hash takes priority, then last-visited board.
+  const restoredRef = useRef(false)
   useEffect(() => {
-    if (loading) return
+    if (loading || restoredRef.current) return
+    restoredRef.current = true
     const oauthHash = sessionStorage.getItem('kanban:returnHash')
     if (oauthHash) {
       sessionStorage.removeItem('kanban:returnHash')
@@ -267,6 +269,8 @@ export default function App() {
 }
 
 function NotInWorkspace() {
+  // Clear saved board so the user doesn't get stuck in a loop.
+  localStorage.removeItem('kanban:lastBoard')
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-6 text-center">
       <div>

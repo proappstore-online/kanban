@@ -197,6 +197,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
     return <Loading />
   }
   if (board === null) {
+    localStorage.removeItem('kanban:lastBoard')
     return (
       <div className="min-h-[100dvh]">
         <TopBar user={user} left={<BackButton onClick={onBack} />} />
