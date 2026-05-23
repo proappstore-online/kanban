@@ -48,6 +48,7 @@ export interface CardPatch {
   acceptanceCriteria?: string | null
   dueAt?: number | null
   etaAt?: number | null
+  coverUrl?: string | null
 }
 
 export async function updateCard(
@@ -81,6 +82,10 @@ export async function updateCard(
   if (patch.etaAt !== undefined) {
     sets.push('eta_at = ?')
     params.push(patch.etaAt)
+  }
+  if (patch.coverUrl !== undefined) {
+    sets.push('cover_url = ?')
+    params.push(patch.coverUrl)
   }
   if (sets.length === 0) return
   sets.push('updated_at = ?')

@@ -7,7 +7,10 @@ import {
   deleteBoard,
   listBoards,
   listFeatures,
+  listStarredBoardIds,
   setBoardFeature,
+  starBoard,
+  unstarBoard,
 } from '../lib/db'
 import { app } from '../lib/app'
 import { toast } from '../lib/toast'
@@ -30,6 +33,7 @@ export function Boards({
 }: BoardsProps) {
   const [boards, setBoards] = useState<BoardSummary[] | null>(null)
   const [features, setFeatures] = useState<Feature[]>([])
+  const [starred, setStarred] = useState<Set<string>>(new Set())
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined)
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -51,10 +55,11 @@ export function Boards({
   }
 
   useEffect(() => {
-    Promise.all([listBoards(workspace.id), listFeatures(workspace.id)])
-      .then(([bs, fs]) => {
+    Promise.all([listBoards(workspace.id), listFeatures(workspace.id), listStarredBoardIds(workspace.id)])
+      .then(([bs, fs, st]) => {
         setBoards(bs)
         setFeatures(fs)
+        setStarred(st)
       })
       .catch(() => {
         if (app.auth.user) {
@@ -88,6 +93,14 @@ export function Boards({
     setBoards((prev) => prev?.filter((b) => b.id !== id) ?? null)
   }
 
+  async function handleToggleStar(boardId: string) {
+    const isStarred = starred.has(boardId)
+    const next = new Set(starred)
+    if (isStarred) { next.delete(boardId); unstarBoard(workspace.id, boardId) }
+    else { next.add(boardId); starBoard(workspace.id, boardId) }
+    setStarred(next)
+  }
+
   async function handleMoveToFeature(boardId: string, featureId: string | null) {
     await setBoardFeature(workspace.id, boardId, featureId)
     setBoards((prev) =>
@@ -108,6 +121,10 @@ export function Boards({
       const key = b.featureId ?? null
       const bucket = map.get(key) ?? map.get(null)!
       bucket.push(b)
+    }
+    // Sort starred boards to the top within each group
+    for (const bucket of map.values()) {
+      bucket.sort((a, b) => (starred.has(b.id) ? 1 : 0) - (starred.has(a.id) ? 1 : 0))
     }
     return map
   })()
@@ -194,6 +211,8 @@ export function Boards({
                   onOpen={onOpen}
                   onDelete={handleDelete}
                   onMoveToFeature={handleMoveToFeature}
+                  starred={starred}
+                  onToggleStar={handleToggleStar}
                 />
               )
             })}
@@ -218,6 +237,8 @@ interface FeatureSectionProps {
   onOpen: (id: string) => void
   onDelete: (id: string, name: string) => void
   onMoveToFeature: (boardId: string, featureId: string | null) => void
+  starred: Set<string>
+  onToggleStar: (boardId: string) => void
 }
 
 function FeatureSection({
@@ -234,6 +255,8 @@ function FeatureSection({
   onOpen,
   onDelete,
   onMoveToFeature,
+  starred,
+  onToggleStar,
 }: FeatureSectionProps) {
   return (
     <section>
@@ -247,7 +270,17 @@ function FeatureSection({
             className="group relative flex h-32 cursor-pointer flex-col justify-between rounded-2xl border border-[var(--line)] bg-[var(--card-gradient)] p-4 shadow-[var(--shadow-card)] hover:border-[var(--line-strong)]"
             onClick={() => onOpen(b.id)}
           >
-            <div className="font-semibold text-[var(--ink)]">{b.name}</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="font-semibold text-[var(--ink)]">{b.name}</div>
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleStar(b.id) }}
+                className="shrink-0 text-base"
+                aria-label={starred.has(b.id) ? 'Unstar board' : 'Star board'}
+                title={starred.has(b.id) ? 'Unstar' : 'Star'}
+              >
+                {starred.has(b.id) ? '★' : '☆'}
+              </button>
+            </div>
             <div className="text-xs text-[var(--muted)]">
               Updated {new Date(b.updatedAt).toLocaleDateString()}
             </div>

@@ -36,6 +36,7 @@ interface CardRow {
   acceptance_criteria: string | null
   due_at: number | null
   eta_at: number | null
+  cover_url: string | null
   archived: number
   created_by: string
   created_at: number
@@ -190,6 +191,7 @@ export async function getBoardFull(
       acceptanceCriteria: cr.acceptance_criteria ?? undefined,
       dueAt: cr.due_at ?? undefined,
       etaAt: cr.eta_at ?? undefined,
+      coverUrl: cr.cover_url ?? undefined,
       position: cr.position,
       labels: labelsByCard.get(cr.id) ?? [],
       checklist: checklistByCard.get(cr.id) ?? [],

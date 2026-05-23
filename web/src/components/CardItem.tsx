@@ -39,6 +39,13 @@ export function CardItem({ card, listKind, onClick, onChangeStatus }: CardItemPr
       onClick={onClick}
       className="group cursor-grab touch-none rounded-xl border border-[var(--line)] bg-[var(--paper)] p-3 text-sm text-[var(--ink)] shadow-[var(--shadow-card)] transition-colors hover:border-[var(--line-strong)] active:cursor-grabbing"
     >
+      {card.coverUrl && (
+        <img
+          src={card.coverUrl}
+          alt=""
+          className="-mx-3 -mt-3 mb-2 h-24 w-[calc(100%+1.5rem)] rounded-t-xl object-cover"
+        />
+      )}
       {(labels.length > 0 || listKind !== 'other') && (
         <div className="-mt-0.5 mb-2 flex flex-wrap items-center gap-1">
           {listKind !== 'other' && (

@@ -26,10 +26,13 @@ import {
   logActivity,
   moveCard,
   removeAssignee,
+  isWatchingCard,
   renameBoard,
   renameBoardLabel,
   renameList,
   setBoardBackground,
+  unwatchCard,
+  watchCard,
   setCardLabels,
   setChecklist,
   unarchiveCard,
@@ -77,6 +80,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   const [showArchived, setShowArchived] = useState(false)
   const [archivedCards, setArchivedCards] = useState<ArchivedCardSummary[] | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [watchingCard, setWatchingCard] = useState(false)
 
   // Reset per-board UI state when navigating between boards. Without this,
   // a filter set on board A stays applied when you open board B in the
@@ -161,6 +165,12 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   useEffect(() => {
     if (board === null) localStorage.removeItem('kanban:lastBoard')
   }, [board])
+
+  // Check watch status when a card opens.
+  useEffect(() => {
+    if (!openCard) { setWatchingCard(false); return }
+    isWatchingCard(workspace.id, openCard.cardId).then(setWatchingCard).catch(() => {})
+  }, [openCard, workspace.id])
 
   /**
    * Write an activity row (fire-and-forget) and broadcast an
@@ -342,6 +352,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       acceptanceCriteria?: string | null
       dueAt?: number | null
       etaAt?: number | null
+      coverUrl?: string | null
     },
   ) {
     const cardTitle = patch.title ?? board?.lists.find((l) => l.id === listId)?.cards.find((c) => c.id === cardId)?.title
@@ -352,6 +363,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
       ...(patch.acceptanceCriteria !== undefined && {
         acceptanceCriteria: patch.acceptanceCriteria ?? undefined,
       }),
+      ...(patch.coverUrl !== undefined && { coverUrl: patch.coverUrl ?? undefined }),
       ...(patch.dueAt !== undefined && { dueAt: patch.dueAt ?? undefined }),
       ...(patch.etaAt !== undefined && { etaAt: patch.etaAt ?? undefined }),
     })
@@ -866,6 +878,16 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           onDeleteComment={(commentId) => handleDeleteComment(open.id, commentId)}
           onArchive={() => handleArchiveCard(open.id, openCard.listId)}
           onDelete={() => handleDeleteCard(open.id, openCard.listId)}
+          watching={watchingCard}
+          onToggleWatch={async () => {
+            if (watchingCard) {
+              await unwatchCard(workspace.id, open.id)
+              setWatchingCard(false)
+            } else {
+              await watchCard(workspace.id, open.id)
+              setWatchingCard(true)
+            }
+          }}
         />
       ) : null}
 

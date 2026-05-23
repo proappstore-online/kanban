@@ -18,7 +18,10 @@ interface CardModalProps {
     acceptanceCriteria?: string | null
     dueAt?: number | null
     etaAt?: number | null
+    coverUrl?: string | null
   }) => void
+  watching?: boolean
+  onToggleWatch?: () => void
   onLabelsChange: (labels: Label[]) => void
   /**
    * Persist a label's display name. Label names are board-scoped — changing
@@ -50,6 +53,8 @@ export function CardModal({
   onDeleteComment,
   onArchive,
   onDelete,
+  watching,
+  onToggleWatch,
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description ?? '')
@@ -57,6 +62,7 @@ export function CardModal({
   const [acceptanceCriteria, setAcceptanceCriteria] = useState(card.acceptanceCriteria ?? '')
   const [dueAt, setDueAt] = useState<number | undefined>(card.dueAt)
   const [etaAt, setEtaAt] = useState<number | undefined>(card.etaAt)
+  const [coverUrl, setCoverUrl] = useState(card.coverUrl ?? '')
   const [newItem, setNewItem] = useState('')
 
   // Snapshots of the basics at open-time, to compute a minimal patch on close
@@ -68,6 +74,7 @@ export function CardModal({
     acceptanceCriteria: card.acceptanceCriteria ?? '',
     dueAt: card.dueAt,
     etaAt: card.etaAt,
+    coverUrl: card.coverUrl ?? '',
   })
 
   useEscape(close)
@@ -81,6 +88,7 @@ export function CardModal({
       acceptanceCriteria?: string | null
       dueAt?: number | null
       etaAt?: number | null
+      coverUrl?: string | null
     } = {}
     if (title.trim() && title.trim() !== init.title) patch.title = title.trim()
     if (description !== init.description) patch.description = description.trim() || null
@@ -89,6 +97,7 @@ export function CardModal({
       patch.acceptanceCriteria = acceptanceCriteria.trim() || null
     if (dueAt !== init.dueAt) patch.dueAt = dueAt ?? null
     if (etaAt !== init.etaAt) patch.etaAt = etaAt ?? null
+    if (coverUrl !== init.coverUrl) patch.coverUrl = coverUrl.trim() || null
     if (Object.keys(patch).length) onSaveBasics(patch)
     onClose()
   }
@@ -213,6 +222,39 @@ export function CardModal({
           <p className="mt-1 text-[11px] text-[var(--error)]">
             ETA is past the due date — at risk.
           </p>
+        )}
+
+        <SectionLabel>Cover image</SectionLabel>
+        <input
+          value={coverUrl}
+          onChange={(e) => setCoverUrl(e.target.value)}
+          placeholder="Paste an image URL…"
+          aria-label="Cover image URL"
+          className="mt-2 w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
+        />
+        {coverUrl && (
+          <img
+            src={coverUrl}
+            alt="Cover preview"
+            className="mt-2 h-24 w-full rounded-xl object-cover"
+            onError={(e) => (e.currentTarget.style.display = 'none')}
+          />
+        )}
+
+        {onToggleWatch && (
+          <>
+            <SectionLabel>Notifications</SectionLabel>
+            <button
+              onClick={onToggleWatch}
+              className={`mt-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                watching
+                  ? 'border-[var(--mint)] bg-[var(--mint-soft)] text-[var(--mint-deep)]'
+                  : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+              }`}
+            >
+              {watching ? 'Watching — you get notified on all changes' : 'Watch this card'}
+            </button>
+          </>
         )}
 
         <SectionLabel>

@@ -194,6 +194,31 @@ const MIGRATIONS = [
       ALTER TABLE cards  ADD COLUMN acceptance_criteria TEXT;
     `,
   },
+  {
+    name: '0004_stars_covers_watchers',
+    sql: `
+      CREATE TABLE IF NOT EXISTS starred_boards (
+        tenant_id TEXT NOT NULL,
+        board_id  TEXT NOT NULL,
+        user_id   TEXT NOT NULL,
+        starred_at INTEGER NOT NULL,
+        PRIMARY KEY (board_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_starred_user ON starred_boards(tenant_id, user_id);
+
+      ALTER TABLE cards ADD COLUMN cover_url TEXT;
+
+      CREATE TABLE IF NOT EXISTS card_watchers (
+        tenant_id  TEXT NOT NULL,
+        card_id    TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        watched_at INTEGER NOT NULL,
+        PRIMARY KEY (card_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_watchers_card ON card_watchers(card_id);
+      CREATE INDEX IF NOT EXISTS idx_watchers_user ON card_watchers(tenant_id, user_id);
+    `,
+  },
 ]
 
 let migrated = false

@@ -90,3 +90,7 @@ export {
 } from './features'
 
 export { listMyTasks } from './my-tasks'
+
+export { starBoard, unstarBoard, listStarredBoardIds } from './stars'
+
+export { watchCard, unwatchCard, isWatchingCard, listCardWatcherIds } from './watchers'

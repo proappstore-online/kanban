@@ -38,6 +38,8 @@ export interface Card {
   dueAt?: number
   /** Engineering best-estimate ship date (separate from `dueAt`). */
   etaAt?: number
+  /** Cover image URL shown on the card preview. */
+  coverUrl?: string
   position: number
   labels: Label[]
   checklist: ChecklistItem[]
@@ -105,6 +107,7 @@ export interface BoardSummary {
   name: string
   featureId?: string
   updatedAt: number
+  starred?: boolean
 }
 
 /** A card row that appears in the cross-board "My Tasks" view. */
