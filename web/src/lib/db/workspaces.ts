@@ -125,6 +125,8 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await app.db.execute(`DELETE FROM checklist_items WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM activity WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM invites WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM card_field_values WHERE tenant_id = ?`, [tid])
+  await app.db.execute(`DELETE FROM custom_fields WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM card_watchers WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM starred_boards WHERE tenant_id = ?`, [tid])
   await app.db.execute(`DELETE FROM cards WHERE tenant_id = ?`, [tid])

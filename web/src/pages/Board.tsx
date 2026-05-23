@@ -6,6 +6,7 @@ import type {
   ActivityKind,
   Card,
   ChecklistItem,
+  CustomField,
   Label,
   LabelColor,
   List,
@@ -26,11 +27,15 @@ import {
   logActivity,
   moveCard,
   removeAssignee,
+  createCustomField,
+  deleteCustomField,
   isWatchingCard,
+  listCustomFields,
   renameBoard,
   renameBoardLabel,
   renameList,
   setBoardBackground,
+  setCardFieldValue,
   unwatchCard,
   watchCard,
   setCardLabels,
@@ -81,6 +86,12 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   const [archivedCards, setArchivedCards] = useState<ArchivedCardSummary[] | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [watchingCard, setWatchingCard] = useState(false)
+  const [customFields, setCustomFields] = useState<CustomField[]>([])
+
+  // Fetch board-scoped custom fields.
+  useEffect(() => {
+    listCustomFields(workspace.id, boardId).then(setCustomFields).catch(() => {})
+  }, [workspace.id, boardId])
 
   // Reset per-board UI state when navigating between boards. Without this,
   // a filter set on board A stays applied when you open board B in the
@@ -724,6 +735,18 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         right={
           <div className="flex items-center gap-2">
             <PresenceBar peers={peers} selfId={user.id} />
+            <FieldsManager
+              fields={customFields}
+              onAdd={async (name, kind, options) => {
+                const lastPos = customFields.length > 0 ? customFields[customFields.length - 1].position : null
+                const f = await createCustomField(workspace.id, board.id, name, kind, options, lastPos)
+                setCustomFields((prev) => [...prev, f])
+              }}
+              onDelete={async (fieldId) => {
+                await deleteCustomField(workspace.id, fieldId)
+                setCustomFields((prev) => prev.filter((f) => f.id !== fieldId))
+              }}
+            />
             <BackgroundPicker
               current={board.background}
               onChange={handleSetBackground}
@@ -879,6 +902,25 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           onDeleteComment={(commentId) => handleDeleteComment(open.id, commentId)}
           onArchive={() => handleArchiveCard(open.id, openCard.listId)}
           onDelete={() => handleDeleteCard(open.id, openCard.listId)}
+          customFields={customFields}
+          onFieldChange={async (fieldId, value) => {
+            await setCardFieldValue(workspace.id, open.id, fieldId, value)
+            setBoard((b) => {
+              if (!b) return b
+              return {
+                ...b,
+                lists: b.lists.map((l) => ({
+                  ...l,
+                  cards: l.cards.map((c) => {
+                    if (c.id !== open.id) return c
+                    const fvs = c.fieldValues.filter((fv) => fv.fieldId !== fieldId)
+                    if (value) fvs.push({ fieldId, value })
+                    return { ...c, fieldValues: fvs }
+                  }),
+                })),
+              }
+            })
+          }}
           watching={watchingCard}
           onToggleWatch={async () => {
             if (togglingWatchRef.current) return
@@ -944,6 +986,122 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
               Close
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FieldsManager({
+  fields,
+  onAdd,
+  onDelete,
+}: {
+  fields: CustomField[]
+  onAdd: (name: string, kind: 'text' | 'number' | 'dropdown', options?: string) => void
+  onDelete: (fieldId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newKind, setNewKind] = useState<'text' | 'number' | 'dropdown'>('text')
+  const [newOptions, setNewOptions] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setAdding(false) }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  function commitAdd() {
+    const name = newName.trim()
+    if (!name) return
+    onAdd(name, newKind, newKind === 'dropdown' ? newOptions : undefined)
+    setNewName('')
+    setNewKind('text')
+    setNewOptions('')
+    setAdding(false)
+  }
+
+  return (
+    <div ref={ref} className="relative hidden sm:block">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center justify-center rounded-full border px-2 py-1 text-xs sm:px-3 ${
+          open
+            ? 'border-[var(--accent)] text-[var(--ink)]'
+            : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
+        }`}
+        title="Custom fields"
+        aria-label="Custom fields"
+      >
+        <span className="hidden sm:inline">Fields{fields.length > 0 ? ` (${fields.length})` : ''}</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-2 w-64 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 shadow-[var(--shadow-soft)]">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Custom fields</div>
+          {fields.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {fields.map((f) => (
+                <li key={f.id} className="flex items-center justify-between rounded-lg px-2 py-1 hover:bg-[var(--paper-deep)]">
+                  <div>
+                    <span className="text-xs text-[var(--ink)]">{f.name}</span>
+                    <span className="ml-1 text-[10px] text-[var(--muted)]">({f.kind})</span>
+                  </div>
+                  <button
+                    onClick={() => onDelete(f.id)}
+                    className="text-[10px] text-[var(--muted)] hover:text-[var(--error)]"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {adding ? (
+            <div className="mt-2 space-y-2">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitAdd() }}
+                placeholder="Field name"
+                autoFocus
+                className="w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none"
+              />
+              <select
+                value={newKind}
+                onChange={(e) => setNewKind(e.target.value as 'text' | 'number' | 'dropdown')}
+                className="w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)]"
+              >
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="dropdown">Dropdown</option>
+              </select>
+              {newKind === 'dropdown' && (
+                <input
+                  value={newOptions}
+                  onChange={(e) => setNewOptions(e.target.value)}
+                  placeholder="Options (pipe-separated: Low|Med|High)"
+                  className="w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none"
+                />
+              )}
+              <div className="flex gap-2">
+                <button onClick={commitAdd} className="rounded-full bg-[var(--ink)] px-3 py-1 text-xs font-semibold text-[var(--paper)]">Add</button>
+                <button onClick={() => setAdding(false)} className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--muted)]">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAdding(true)}
+              className="mt-2 w-full rounded-full border border-dashed border-[var(--line-strong)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+            >
+              + Add a field
+            </button>
+          )}
         </div>
       )}
     </div>

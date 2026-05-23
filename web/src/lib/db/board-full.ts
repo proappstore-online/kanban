@@ -3,6 +3,7 @@ import type {
   Assignee,
   BoardWithLists,
   Card,
+  CardFieldValue,
   ChecklistItem,
   Label,
   LabelColor,
@@ -80,7 +81,7 @@ export async function getBoardFull(
   boardId: string,
 ): Promise<BoardWithLists | null> {
   await ensureMigrated()
-  const [boardQ, listsQ, cardsQ, labelsQ, cardLabelsQ, assigneesQ, checklistQ, commentCountQ] =
+  const [boardQ, listsQ, cardsQ, labelsQ, cardLabelsQ, assigneesQ, checklistQ, commentCountQ, fieldValuesQ] =
     await Promise.all([
       app.db.query<BoardRow>(
         `SELECT * FROM boards WHERE id = ? AND tenant_id = ? LIMIT 1`,
@@ -129,6 +130,13 @@ export async function getBoardFull(
           GROUP BY c.card_id`,
         [tenantId, boardId],
       ),
+      app.db.query<{ card_id: string; field_id: string; value: string }>(
+        `SELECT cfv.card_id, cfv.field_id, cfv.value
+           FROM card_field_values cfv
+           JOIN cards c ON c.id = cfv.card_id
+          WHERE c.board_id = ? AND c.tenant_id = ?`,
+        [boardId, tenantId],
+      ),
     ])
 
   const boardRow = boardQ.rows[0]
@@ -168,6 +176,13 @@ export async function getBoardFull(
     commentCountQ.rows.map((r) => [r.card_id, Number(r.n)]),
   )
 
+  const fieldValuesByCard = new Map<string, CardFieldValue[]>()
+  for (const fv of fieldValuesQ.rows) {
+    const arr = fieldValuesByCard.get(fv.card_id) ?? []
+    arr.push({ fieldId: fv.field_id, value: fv.value })
+    fieldValuesByCard.set(fv.card_id, arr)
+  }
+
   const lists: List[] = listsQ.rows.map((lr) => ({
     id: lr.id,
     boardId: lr.board_id,
@@ -196,6 +211,7 @@ export async function getBoardFull(
       labels: labelsByCard.get(cr.id) ?? [],
       checklist: checklistByCard.get(cr.id) ?? [],
       assignees: assigneesByCard.get(cr.id) ?? [],
+      fieldValues: fieldValuesByCard.get(cr.id) ?? [],
       commentCount: commentCountByCard.get(cr.id) ?? 0,
       createdBy: cr.created_by,
       createdAt: cr.created_at,

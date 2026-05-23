@@ -33,6 +33,7 @@ export async function createCard(
     labels: [],
     checklist: [],
     assignees: [],
+    fieldValues: [],
     commentCount: 0,
     createdBy: me.id,
     createdAt: now,

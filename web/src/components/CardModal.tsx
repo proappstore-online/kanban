@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Card, ChecklistItem, Comment, Label, LabelColor, Member } from '../types'
+import type { Card, ChecklistItem, Comment, CustomField, Label, LabelColor, Member } from '../types'
 import { LABEL_PRESETS } from '../types'
 import { useEscape } from '../lib/useEscape'
 import { MemberPicker } from './MemberPicker'
@@ -22,6 +22,8 @@ interface CardModalProps {
   }) => void
   watching?: boolean
   onToggleWatch?: () => void
+  customFields?: CustomField[]
+  onFieldChange?: (fieldId: string, value: string | null) => void
   onLabelsChange: (labels: Label[]) => void
   /**
    * Persist a label's display name. Label names are board-scoped — changing
@@ -55,6 +57,8 @@ export function CardModal({
   onDelete,
   watching,
   onToggleWatch,
+  customFields,
+  onFieldChange,
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description ?? '')
@@ -247,6 +251,48 @@ export function CardModal({
             className="mt-2 h-24 w-full rounded-xl object-cover"
             onError={(e) => (e.currentTarget.style.display = 'none')}
           />
+        )}
+
+        {customFields && customFields.length > 0 && (
+          <>
+            <SectionLabel>Custom fields</SectionLabel>
+            <div className="mt-2 space-y-2">
+              {customFields.map((f) => {
+                const current = card.fieldValues.find((fv) => fv.fieldId === f.id)?.value ?? ''
+                return (
+                  <div key={f.id}>
+                    <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
+                      {f.name}
+                      {f.kind === 'dropdown' ? (
+                        <select
+                          value={current}
+                          onChange={(e) => onFieldChange?.(f.id, e.target.value || null)}
+                          className="mt-1 block w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none"
+                        >
+                          <option value="">—</option>
+                          {(f.options ?? '').split('|').filter(Boolean).map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={f.kind === 'number' ? 'number' : 'text'}
+                          defaultValue={current}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim()
+                            if (v !== current) onFieldChange?.(f.id, v || null)
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          placeholder={f.name}
+                          className="mt-1 block w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
+                        />
+                      )}
+                    </label>
+                  </div>
+                )
+              })}
+            </div>
+          </>
         )}
 
         {onToggleWatch && (

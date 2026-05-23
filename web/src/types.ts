@@ -24,6 +24,23 @@ export interface Assignee {
   avatarUrl?: string
 }
 
+export type CustomFieldKind = 'text' | 'number' | 'dropdown'
+
+export interface CustomField {
+  id: string
+  boardId: string
+  name: string
+  kind: CustomFieldKind
+  /** Dropdown options, pipe-separated. */
+  options?: string
+  position: number
+}
+
+export interface CardFieldValue {
+  fieldId: string
+  value: string
+}
+
 export interface Card {
   id: string
   boardId: string
@@ -44,6 +61,8 @@ export interface Card {
   labels: Label[]
   checklist: ChecklistItem[]
   assignees: Assignee[]
+  /** Custom field values for this card. */
+  fieldValues: CardFieldValue[]
   /** Count of non-deleted comments. Rendered as a chip on the card preview. */
   commentCount: number
   createdBy: string

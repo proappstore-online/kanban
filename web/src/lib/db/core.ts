@@ -219,6 +219,31 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_watchers_user ON card_watchers(tenant_id, user_id);
     `,
   },
+  {
+    name: '0005_custom_fields',
+    sql: `
+      CREATE TABLE IF NOT EXISTS custom_fields (
+        id         TEXT PRIMARY KEY,
+        tenant_id  TEXT NOT NULL,
+        board_id   TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        kind       TEXT NOT NULL DEFAULT 'text',
+        options    TEXT,
+        position   REAL NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_custom_fields_board ON custom_fields(tenant_id, board_id, position);
+
+      CREATE TABLE IF NOT EXISTS card_field_values (
+        tenant_id TEXT NOT NULL,
+        card_id   TEXT NOT NULL,
+        field_id  TEXT NOT NULL,
+        value     TEXT,
+        PRIMARY KEY (card_id, field_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_card_field_values_field ON card_field_values(field_id);
+    `,
+  },
 ]
 
 let migrated = false

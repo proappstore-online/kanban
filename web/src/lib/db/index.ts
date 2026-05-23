@@ -94,3 +94,11 @@ export { listMyTasks } from './my-tasks'
 export { starBoard, unstarBoard, listStarredBoardIds } from './stars'
 
 export { watchCard, unwatchCard, isWatchingCard, listCardWatcherIds } from './watchers'
+
+export {
+  listCustomFields,
+  createCustomField,
+  updateCustomField,
+  deleteCustomField,
+  setCardFieldValue,
+} from './custom-fields'
