@@ -23,6 +23,8 @@ export function between(prev: number | null, next: number | null): number {
   if (prev === null && next === null) return STEP
   if (prev === null && next !== null) return next - STEP
   if (prev !== null && next === null) return prev + STEP
+  // Guard against equal positions — offset by MIN_GAP to avoid collapse
+  if (prev === next) return prev! + MIN_GAP
   return (prev! + next!) / 2
 }
 

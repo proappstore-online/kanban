@@ -69,8 +69,9 @@ export async function countUnreadMentions(tenantId: string): Promise<number> {
   const me = app.auth.user
   if (!me) return 0
   const { rows } = await app.db.query<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM mentions
-      WHERE tenant_id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
+    `SELECT COUNT(*) AS n FROM mentions m
+       JOIN comments c ON c.id = m.comment_id AND c.deleted_at IS NULL
+      WHERE m.tenant_id = ? AND m.mentioned_user_id = ? AND m.read_at IS NULL`,
     [tenantId, me.id],
   )
   return Number(rows[0]?.n ?? 0)

@@ -280,13 +280,13 @@ export async function setCardLabels(
   labelIds: string[],
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM card_labels WHERE card_id = ?`, [cardId])
-  for (const labelId of labelIds) {
-    await app.db.execute(
-      `INSERT INTO card_labels (tenant_id, card_id, label_id) VALUES (?,?,?)`,
-      [tenantId, cardId, labelId],
-    )
-  }
+  await app.db.batch([
+    { sql: `DELETE FROM card_labels WHERE card_id = ?`, params: [cardId] },
+    ...labelIds.map((labelId) => ({
+      sql: `INSERT INTO card_labels (tenant_id, card_id, label_id) VALUES (?,?,?)`,
+      params: [tenantId, cardId, labelId],
+    })),
+  ])
 }
 
 // Checklist -------------------------------------------------------------------
@@ -297,12 +297,13 @@ export async function setChecklist(
   items: ChecklistItem[],
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM checklist_items WHERE card_id = ?`, [cardId])
-  for (const item of items) {
-    await app.db.execute(
-      `INSERT INTO checklist_items (id, tenant_id, card_id, text, done, position, created_at)
+  const now = Date.now()
+  await app.db.batch([
+    { sql: `DELETE FROM checklist_items WHERE card_id = ?`, params: [cardId] },
+    ...items.map((item) => ({
+      sql: `INSERT INTO checklist_items (id, tenant_id, card_id, text, done, position, created_at)
        VALUES (?,?,?,?,?,?,?)`,
-      [item.id, tenantId, cardId, item.text, item.done ? 1 : 0, item.position, Date.now()],
-    )
-  }
+      params: [item.id, tenantId, cardId, item.text, item.done ? 1 : 0, item.position, now],
+    })),
+  ])
 }

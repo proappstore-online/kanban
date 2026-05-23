@@ -30,6 +30,7 @@ export function MentionsBell({ workspaceId, onOpenCard }: MentionsBellProps) {
   const [unread, setUnread] = useState(0)
   const [open, setOpen] = useState(false)
   const [mentions, setMentions] = useState<Mention[] | null>(null)
+  const [fetchError, setFetchError] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
   const refreshCount = useCallback(async () => {
@@ -60,11 +61,13 @@ export function MentionsBell({ workspaceId, onOpenCard }: MentionsBellProps) {
     const next = !open
     setOpen(next)
     if (next) {
+      setFetchError(false)
       try {
         const ms = await listMyMentions(workspaceId, 25)
         setMentions(ms)
       } catch {
         setMentions([])
+        setFetchError(true)
       }
     }
   }
@@ -128,6 +131,10 @@ export function MentionsBell({ workspaceId, onOpenCard }: MentionsBellProps) {
           </div>
           {mentions === null ? (
             <div className="px-4 py-6 text-center text-xs text-[var(--muted)]">Loading…</div>
+          ) : fetchError ? (
+            <div className="px-4 py-6 text-center text-xs text-[var(--muted)]">
+              Couldn't load mentions. Try again.
+            </div>
           ) : mentions.length === 0 ? (
             <div className="px-4 py-6 text-center text-xs text-[var(--muted)]">
               No one's mentioned you yet.
