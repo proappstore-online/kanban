@@ -94,11 +94,16 @@ export function Boards({
   }
 
   async function handleToggleStar(boardId: string) {
-    const isStarred = starred.has(boardId)
+    const was = starred.has(boardId)
     const next = new Set(starred)
-    if (isStarred) { next.delete(boardId); unstarBoard(workspace.id, boardId) }
-    else { next.add(boardId); starBoard(workspace.id, boardId) }
+    if (was) next.delete(boardId); else next.add(boardId)
     setStarred(next)
+    try {
+      if (was) await unstarBoard(workspace.id, boardId)
+      else await starBoard(workspace.id, boardId)
+    } catch {
+      setStarred(starred)
+    }
   }
 
   async function handleMoveToFeature(boardId: string, featureId: string | null) {
@@ -124,7 +129,7 @@ export function Boards({
     }
     // Sort starred boards to the top within each group
     for (const bucket of map.values()) {
-      bucket.sort((a, b) => (starred.has(b.id) ? 1 : 0) - (starred.has(a.id) ? 1 : 0))
+      bucket.sort((a, b) => (starred.has(a.id) === starred.has(b.id) ? 0 : starred.has(a.id) ? -1 : 1))
     }
     return map
   })()

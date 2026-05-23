@@ -97,7 +97,15 @@ export function CardModal({
       patch.acceptanceCriteria = acceptanceCriteria.trim() || null
     if (dueAt !== init.dueAt) patch.dueAt = dueAt ?? null
     if (etaAt !== init.etaAt) patch.etaAt = etaAt ?? null
-    if (coverUrl !== init.coverUrl) patch.coverUrl = coverUrl.trim() || null
+    if (coverUrl !== init.coverUrl) {
+      const trimmed = coverUrl.trim()
+      try {
+        if (trimmed && new URL(trimmed).protocol !== 'https:') patch.coverUrl = null
+        else patch.coverUrl = trimmed || null
+      } catch {
+        patch.coverUrl = null
+      }
+    }
     if (Object.keys(patch).length) onSaveBasics(patch)
     onClose()
   }

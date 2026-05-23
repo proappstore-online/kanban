@@ -118,6 +118,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
   // the first and leave position math unstable.
   const movingCardsRef = useRef<Set<string>>(new Set())
   const togglingAssigneesRef = useRef<Set<string>>(new Set())
+  const togglingWatchRef = useRef(false)
 
   const {
     board,
@@ -880,12 +881,18 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
           onDelete={() => handleDeleteCard(open.id, openCard.listId)}
           watching={watchingCard}
           onToggleWatch={async () => {
-            if (watchingCard) {
-              await unwatchCard(workspace.id, open.id)
-              setWatchingCard(false)
-            } else {
-              await watchCard(workspace.id, open.id)
-              setWatchingCard(true)
+            if (togglingWatchRef.current) return
+            togglingWatchRef.current = true
+            try {
+              if (watchingCard) {
+                await unwatchCard(workspace.id, open.id)
+                setWatchingCard(false)
+              } else {
+                await watchCard(workspace.id, open.id)
+                setWatchingCard(true)
+              }
+            } finally {
+              togglingWatchRef.current = false
             }
           }}
         />
