@@ -26,6 +26,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+      - name: Code health scan
+        run: npx @vibecodeqa/cli@0.31 --json --badge > /dev/null 2>&1 || true
+      - name: Include code health in deploy
+        run: |
+          mkdir -p web/dist/.vcqa
+          cp .vibe-check/report.json web/dist/.vcqa/report.json 2>/dev/null || true
+          cp .vibe-check/badge.svg web/dist/.vcqa/badge.svg 2>/dev/null || true
+
       - run: npx wrangler pages deploy web/dist --project-name=proappstore-kanban --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
