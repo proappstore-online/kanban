@@ -8,8 +8,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#000000" id="theme-color" />
     <meta name="darkreader-lock" />
-    <script>
-      (function() {
+    <link rel="manifest" href="/manifest.json" />    <script>
+    <link rel="apple-touch-icon" href="/icon-192.png" />      (function() {
         var pref = localStorage.getItem('fas:theme') || 'system';
         var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.dataset.theme = 'dark';
