@@ -1,6 +1,7 @@
 import { app } from '../app'
 import type { Mention } from '../../types'
 import { ensureMigrated } from './core'
+import { q, x } from '../actions'
 
 interface MentionRow {
   id: string
@@ -46,21 +47,7 @@ export async function listMyMentions(tenantId: string, limit = 25): Promise<Ment
   await ensureMigrated()
   const me = app.auth.user
   if (!me) return []
-  const { rows } = await app.db.query<MentionRow>(
-    `SELECT m.*,
-            actor.display_name AS actor_display_name,
-            actor.avatar_url   AS actor_avatar_url,
-            c.body             AS comment_body,
-            cards.title        AS card_title
-       FROM mentions m
-       LEFT JOIN members actor ON actor.tenant_id = m.tenant_id AND actor.user_id = m.actor_id
-       LEFT JOIN comments c    ON c.id = m.comment_id AND c.deleted_at IS NULL
-       LEFT JOIN cards         ON cards.id = m.card_id
-      WHERE m.tenant_id = ? AND m.mentioned_user_id = ?
-      ORDER BY m.created_at DESC
-      LIMIT ?`,
-    [tenantId, me.id, limit],
-  )
+  const rows = await q<MentionRow>('list_my_mentions', { tenant_id: tenantId, limit })
   return rows.map(rowToMention)
 }
 
@@ -68,12 +55,7 @@ export async function countUnreadMentions(tenantId: string): Promise<number> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) return 0
-  const { rows } = await app.db.query<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM mentions m
-       JOIN comments c ON c.id = m.comment_id AND c.deleted_at IS NULL
-      WHERE m.tenant_id = ? AND m.mentioned_user_id = ? AND m.read_at IS NULL`,
-    [tenantId, me.id],
-  )
+  const rows = await q<{ n: number }>('count_unread_mentions', { tenant_id: tenantId })
   return Number(rows[0]?.n ?? 0)
 }
 
@@ -81,20 +63,12 @@ export async function markMentionRead(tenantId: string, mentionId: string): Prom
   await ensureMigrated()
   const me = app.auth.user
   if (!me) return
-  await app.db.execute(
-    `UPDATE mentions SET read_at = ?
-      WHERE id = ? AND tenant_id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
-    [Date.now(), mentionId, tenantId, me.id],
-  )
+  await x('mark_mention_read', { tenant_id: tenantId, mention_id: mentionId })
 }
 
 export async function markAllMentionsRead(tenantId: string): Promise<void> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) return
-  await app.db.execute(
-    `UPDATE mentions SET read_at = ?
-      WHERE tenant_id = ? AND mentioned_user_id = ? AND read_at IS NULL`,
-    [Date.now(), tenantId, me.id],
-  )
+  await x('mark_all_mentions_read', { tenant_id: tenantId })
 }

@@ -1,6 +1,7 @@
 import { app } from '../app'
 import type { ActivityEntry, ActivityKind } from '../../types'
 import { ensureMigrated, rid } from './core'
+import { q, x } from '../actions'
 
 interface ActivityRow {
   id: string
@@ -53,11 +54,14 @@ export async function logActivity(
   const me = app.auth.user
   if (!me) return
   try {
-    await app.db.execute(
-      `INSERT INTO activity (id, tenant_id, board_id, card_id, actor_id, kind, payload, created_at)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [rid(), tenantId, boardId, cardId ?? null, me.id, kind, JSON.stringify(payload), Date.now()],
-    )
+    await x('log_activity', {
+      id: rid(),
+      tenant_id: tenantId,
+      board_id: boardId,
+      card_id: cardId ?? null,
+      kind,
+      payload: JSON.stringify(payload),
+    })
   } catch {
     /* swallow */
   }
@@ -69,14 +73,10 @@ export async function listBoardActivity(
   limit = 50,
 ): Promise<ActivityEntry[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<ActivityRow>(
-    `SELECT a.*, m.display_name AS actor_display_name, m.avatar_url AS actor_avatar_url
-       FROM activity a
-       LEFT JOIN members m ON m.tenant_id = a.tenant_id AND m.user_id = a.actor_id
-      WHERE a.tenant_id = ? AND a.board_id = ?
-      ORDER BY a.created_at DESC
-      LIMIT ?`,
-    [tenantId, boardId, limit],
-  )
+  const rows = await q<ActivityRow>('list_board_activity', {
+    tenant_id: tenantId,
+    board_id: boardId,
+    limit,
+  })
   return rows.map(rowToActivity)
 }

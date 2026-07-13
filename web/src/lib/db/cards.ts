@@ -3,6 +3,7 @@ import type { Card, ChecklistItem, Label, LabelColor } from '../../types'
 import { between, firstPosition } from '../frac'
 import { ensureMigrated, rid } from './core'
 import { touchBoard } from './boards'
+import { q, x } from '../actions'
 
 export async function createCard(
   tenantId: string,
@@ -17,12 +18,14 @@ export async function createCard(
   const id = rid()
   const position = lastPositionInList === null ? firstPosition() : between(lastPositionInList, null)
   const now = Date.now()
-  await app.db.execute(
-    `INSERT INTO cards
-      (id, tenant_id, board_id, list_id, position, title, archived, created_by, created_at, updated_at, version)
-     VALUES (?,?,?,?,?,?,0,?,?,?,1)`,
-    [id, tenantId, boardId, listId, position, title, me.id, now, now],
-  )
+  await x('create_card', {
+    id,
+    tenant_id: tenantId,
+    board_id: boardId,
+    list_id: listId,
+    position,
+    title,
+  })
   await touchBoard(tenantId, boardId)
   return {
     id,
@@ -58,45 +61,36 @@ export async function updateCard(
   patch: CardPatch,
 ): Promise<void> {
   await ensureMigrated()
-  const sets: string[] = []
-  const params: unknown[] = []
-  if (patch.title !== undefined) {
-    sets.push('title = ?')
-    params.push(patch.title)
-  }
-  if (patch.description !== undefined) {
-    sets.push('description = ?')
-    params.push(patch.description)
-  }
-  if (patch.requirement !== undefined) {
-    sets.push('requirement = ?')
-    params.push(patch.requirement)
-  }
-  if (patch.acceptanceCriteria !== undefined) {
-    sets.push('acceptance_criteria = ?')
-    params.push(patch.acceptanceCriteria)
-  }
-  if (patch.dueAt !== undefined) {
-    sets.push('due_at = ?')
-    params.push(patch.dueAt)
-  }
-  if (patch.etaAt !== undefined) {
-    sets.push('eta_at = ?')
-    params.push(patch.etaAt)
-  }
-  if (patch.coverUrl !== undefined) {
-    sets.push('cover_url = ?')
-    params.push(patch.coverUrl)
-  }
-  if (sets.length === 0) return
-  sets.push('updated_at = ?')
-  params.push(Date.now())
-  sets.push('version = version + 1')
-  params.push(cardId, tenantId)
-  await app.db.execute(
-    `UPDATE cards SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`,
-    params,
-  )
+  // The registered `update_card` action applies only the fields whose `*_set`
+  // flag is 1, so a field left out of `patch` is untouched while a field set
+  // explicitly to null is cleared — mirroring the old dynamic-SET behaviour.
+  // `title` is non-nullable, so COALESCE(:title, title) is enough for it.
+  const anySet =
+    patch.title !== undefined ||
+    patch.description !== undefined ||
+    patch.requirement !== undefined ||
+    patch.acceptanceCriteria !== undefined ||
+    patch.dueAt !== undefined ||
+    patch.etaAt !== undefined ||
+    patch.coverUrl !== undefined
+  if (!anySet) return
+  await x('update_card', {
+    tenant_id: tenantId,
+    card_id: cardId,
+    title: patch.title ?? null,
+    description: patch.description ?? null,
+    description_set: patch.description !== undefined ? 1 : 0,
+    requirement: patch.requirement ?? null,
+    requirement_set: patch.requirement !== undefined ? 1 : 0,
+    acceptance_criteria: patch.acceptanceCriteria ?? null,
+    acceptance_criteria_set: patch.acceptanceCriteria !== undefined ? 1 : 0,
+    due_at: patch.dueAt ?? null,
+    due_at_set: patch.dueAt !== undefined ? 1 : 0,
+    eta_at: patch.etaAt ?? null,
+    eta_at_set: patch.etaAt !== undefined ? 1 : 0,
+    cover_url: patch.coverUrl ?? null,
+    cover_url_set: patch.coverUrl !== undefined ? 1 : 0,
+  })
 }
 
 export interface ArchivedCardSummary {
@@ -118,20 +112,13 @@ export async function listArchivedCards(
   boardId: string,
 ): Promise<ArchivedCardSummary[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<{
+  const rows = await q<{
     id: string
     title: string
     list_id: string
     list_title: string
     updated_at: number
-  }>(
-    `SELECT c.id, c.title, c.list_id, l.title AS list_title, c.updated_at
-       FROM cards c
-       LEFT JOIN lists l ON l.id = c.list_id
-      WHERE c.tenant_id = ? AND c.board_id = ? AND c.archived = 1
-      ORDER BY c.updated_at DESC`,
-    [tenantId, boardId],
-  )
+  }>('list_archived_cards', { tenant_id: tenantId, board_id: boardId })
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -149,20 +136,12 @@ export async function listArchivedCards(
  */
 export async function archiveCard(tenantId: string, cardId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE cards SET archived = 1, updated_at = ?, version = version + 1
-      WHERE id = ? AND tenant_id = ?`,
-    [Date.now(), cardId, tenantId],
-  )
+  await x('archive_card', { tenant_id: tenantId, card_id: cardId })
 }
 
 export async function unarchiveCard(tenantId: string, cardId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE cards SET archived = 0, updated_at = ?, version = version + 1
-      WHERE id = ? AND tenant_id = ?`,
-    [Date.now(), cardId, tenantId],
-  )
+  await x('unarchive_card', { tenant_id: tenantId, card_id: cardId })
 }
 
 /**
@@ -173,12 +152,8 @@ export async function unarchiveCard(tenantId: string, cardId: string): Promise<v
  */
 export async function deleteCard(tenantId: string, cardId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM mentions        WHERE card_id = ?`, [cardId])
-  await app.db.execute(`DELETE FROM comments        WHERE card_id = ?`, [cardId])
-  await app.db.execute(`DELETE FROM card_labels     WHERE card_id = ?`, [cardId])
-  await app.db.execute(`DELETE FROM card_assignees  WHERE card_id = ?`, [cardId])
-  await app.db.execute(`DELETE FROM checklist_items WHERE card_id = ?`, [cardId])
-  await app.db.execute(`DELETE FROM cards WHERE id = ? AND tenant_id = ?`, [cardId, tenantId])
+  // Atomic cascade — one D1 transaction, membership-guarded per statement.
+  await x('delete_card', { tenant_id: tenantId, card_id: cardId })
 }
 
 export async function moveCard(
@@ -190,12 +165,7 @@ export async function moveCard(
 ): Promise<number> {
   await ensureMigrated()
   const position = between(prevPos, nextPos)
-  await app.db.execute(
-    `UPDATE cards
-        SET list_id = ?, position = ?, updated_at = ?, version = version + 1
-      WHERE id = ? AND tenant_id = ?`,
-    [toListId, position, Date.now(), cardId, tenantId],
-  )
+  await x('move_card', { tenant_id: tenantId, card_id: cardId, to_list_id: toListId, position })
   return position
 }
 
@@ -209,11 +179,7 @@ export async function addAssignee(
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  await app.db.execute(
-    `INSERT OR IGNORE INTO card_assignees (tenant_id, card_id, user_id, assigned_at, assigned_by)
-     VALUES (?,?,?,?,?)`,
-    [tenantId, cardId, userId, Date.now(), me.id],
-  )
+  await x('add_assignee', { tenant_id: tenantId, card_id: cardId, user_id: userId })
 }
 
 export async function removeAssignee(
@@ -222,10 +188,7 @@ export async function removeAssignee(
   userId: string,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `DELETE FROM card_assignees WHERE tenant_id = ? AND card_id = ? AND user_id = ?`,
-    [tenantId, cardId, userId],
-  )
+  await x('remove_assignee', { tenant_id: tenantId, card_id: cardId, user_id: userId })
 }
 
 // Labels ----------------------------------------------------------------------
@@ -244,22 +207,13 @@ export async function ensureBoardLabels(
   colors: LabelColor[],
 ): Promise<Label[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<LabelRow>(
-    `SELECT * FROM labels WHERE board_id = ? AND tenant_id = ?`,
-    [boardId, tenantId],
-  )
+  const rows = await q<LabelRow>('list_board_labels', { tenant_id: tenantId, board_id: boardId })
   const existing = new Set(rows.map((r) => r.color))
   const toCreate = colors.filter((c) => !existing.has(c))
   for (const color of toCreate) {
-    await app.db.execute(
-      `INSERT INTO labels (id, tenant_id, board_id, color, name) VALUES (?,?,?,?,'')`,
-      [rid(), tenantId, boardId, color],
-    )
+    await x('create_label', { id: rid(), tenant_id: tenantId, board_id: boardId, color })
   }
-  const { rows: after } = await app.db.query<LabelRow>(
-    `SELECT * FROM labels WHERE board_id = ? AND tenant_id = ?`,
-    [boardId, tenantId],
-  )
+  const after = await q<LabelRow>('list_board_labels', { tenant_id: tenantId, board_id: boardId })
   return after.map((r) => ({ id: r.id, color: r.color, name: r.name }))
 }
 
@@ -274,10 +228,7 @@ export async function renameBoardLabel(
   name: string,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE labels SET name = ? WHERE id = ? AND tenant_id = ?`,
-    [name, labelId, tenantId],
-  )
+  await x('rename_board_label', { tenant_id: tenantId, label_id: labelId, name })
 }
 
 export async function setCardLabels(
@@ -286,13 +237,13 @@ export async function setCardLabels(
   labelIds: string[],
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.batch([
-    { sql: `DELETE FROM card_labels WHERE card_id = ?`, params: [cardId] },
-    ...labelIds.map((labelId) => ({
-      sql: `INSERT INTO card_labels (tenant_id, card_id, label_id) VALUES (?,?,?)`,
-      params: [tenantId, cardId, labelId],
-    })),
-  ])
+  // Atomic clear + re-insert. The action expands a JSON array of label ids
+  // via json_each, so the whole set replace is one guarded D1 transaction.
+  await x('set_card_labels', {
+    tenant_id: tenantId,
+    card_id: cardId,
+    label_ids_json: JSON.stringify(labelIds),
+  })
 }
 
 // Checklist -------------------------------------------------------------------
@@ -303,13 +254,18 @@ export async function setChecklist(
   items: ChecklistItem[],
 ): Promise<void> {
   await ensureMigrated()
-  const now = Date.now()
-  await app.db.batch([
-    { sql: `DELETE FROM checklist_items WHERE card_id = ?`, params: [cardId] },
-    ...items.map((item) => ({
-      sql: `INSERT INTO checklist_items (id, tenant_id, card_id, text, done, position, created_at)
-       VALUES (?,?,?,?,?,?,?)`,
-      params: [item.id, tenantId, cardId, item.text, item.done ? 1 : 0, item.position, now],
-    })),
-  ])
+  // Atomic clear + re-insert. The action expands a JSON array of
+  // {id,text,done,position} via json_each, so this is one guarded D1 transaction.
+  await x('set_checklist', {
+    tenant_id: tenantId,
+    card_id: cardId,
+    items_json: JSON.stringify(
+      items.map((item) => ({
+        id: item.id,
+        text: item.text,
+        done: item.done ? 1 : 0,
+        position: item.position,
+      })),
+    ),
+  })
 }

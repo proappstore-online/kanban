@@ -1,4 +1,3 @@
-import { app } from '../app'
 import type {
   Assignee,
   BoardWithLists,
@@ -13,6 +12,7 @@ import type {
 import { ensureMigrated } from './core'
 import type { BoardRow } from './boards'
 import { rowToBoard } from './boards'
+import { q } from '../actions'
 
 interface ListRow {
   id: string
@@ -81,72 +81,28 @@ export async function getBoardFull(
   boardId: string,
 ): Promise<BoardWithLists | null> {
   await ensureMigrated()
-  const [boardQ, listsQ, cardsQ, labelsQ, cardLabelsQ, assigneesQ, checklistQ, commentCountQ, fieldValuesQ] =
+  const p = { tenant_id: tenantId, board_id: boardId }
+  const [boardRows, listRows, cardRows, labelRows, cardLabelRows, assigneeRows, checklistRows, commentCountRows, fieldValueRows] =
     await Promise.all([
-      app.db.query<BoardRow>(
-        `SELECT * FROM boards WHERE id = ? AND tenant_id = ? LIMIT 1`,
-        [boardId, tenantId],
-      ),
-      app.db.query<ListRow>(
-        `SELECT * FROM lists WHERE board_id = ? AND tenant_id = ? AND archived = 0 ORDER BY position`,
-        [boardId, tenantId],
-      ),
-      app.db.query<CardRow>(
-        `SELECT * FROM cards WHERE board_id = ? AND tenant_id = ? AND archived = 0 ORDER BY list_id, position`,
-        [boardId, tenantId],
-      ),
-      app.db.query<LabelRow>(
-        `SELECT * FROM labels WHERE board_id = ? AND tenant_id = ?`,
-        [boardId, tenantId],
-      ),
-      app.db.query<{ card_id: string; label_id: string }>(
-        `SELECT cl.card_id, cl.label_id
-           FROM card_labels cl
-           JOIN cards c ON c.id = cl.card_id
-          WHERE c.board_id = ? AND c.tenant_id = ?`,
-        [boardId, tenantId],
-      ),
-      app.db.query<AssigneeRow>(
-        `SELECT ca.card_id, ca.user_id, m.display_name, m.avatar_url
-           FROM card_assignees ca
-           JOIN cards   c ON c.id = ca.card_id
-           JOIN members m ON m.tenant_id = ca.tenant_id AND m.user_id = ca.user_id
-          WHERE c.board_id = ? AND c.tenant_id = ?`,
-        [boardId, tenantId],
-      ),
-      app.db.query<ChecklistRow>(
-        `SELECT ci.*
-           FROM checklist_items ci
-           JOIN cards c ON c.id = ci.card_id
-          WHERE c.board_id = ? AND c.tenant_id = ?
-       ORDER BY ci.position`,
-        [boardId, tenantId],
-      ),
-      app.db.query<{ card_id: string; n: number }>(
-        `SELECT c.card_id, COUNT(*) AS n
-           FROM comments c
-           JOIN cards cards ON cards.id = c.card_id
-          WHERE c.tenant_id = ? AND cards.board_id = ? AND c.deleted_at IS NULL
-          GROUP BY c.card_id`,
-        [tenantId, boardId],
-      ),
-      app.db.query<{ card_id: string; field_id: string; value: string }>(
-        `SELECT cfv.card_id, cfv.field_id, cfv.value
-           FROM card_field_values cfv
-           JOIN cards c ON c.id = cfv.card_id
-          WHERE c.board_id = ? AND c.tenant_id = ?`,
-        [boardId, tenantId],
-      ),
+      q<BoardRow>('get_board', p),
+      q<ListRow>('list_board_lists', p),
+      q<CardRow>('list_board_cards', p),
+      q<LabelRow>('list_board_labels', p),
+      q<{ card_id: string; label_id: string }>('list_board_card_labels', p),
+      q<AssigneeRow>('list_board_assignees', p),
+      q<ChecklistRow>('list_board_checklists', p),
+      q<{ card_id: string; n: number }>('list_board_comment_counts', p),
+      q<{ card_id: string; field_id: string; value: string }>('list_board_field_values', p),
     ])
 
-  const boardRow = boardQ.rows[0]
+  const boardRow = boardRows[0]
   if (!boardRow) return null
 
   const labelById = new Map<string, Label>()
-  for (const l of labelsQ.rows) labelById.set(l.id, { id: l.id, color: l.color, name: l.name })
+  for (const l of labelRows) labelById.set(l.id, { id: l.id, color: l.color, name: l.name })
 
   const labelsByCard = new Map<string, Label[]>()
-  for (const { card_id, label_id } of cardLabelsQ.rows) {
+  for (const { card_id, label_id } of cardLabelRows) {
     const label = labelById.get(label_id)
     if (!label) continue
     const arr = labelsByCard.get(card_id) ?? []
@@ -155,7 +111,7 @@ export async function getBoardFull(
   }
 
   const assigneesByCard = new Map<string, Assignee[]>()
-  for (const a of assigneesQ.rows) {
+  for (const a of assigneeRows) {
     const arr = assigneesByCard.get(a.card_id) ?? []
     arr.push({
       userId: a.user_id,
@@ -166,24 +122,24 @@ export async function getBoardFull(
   }
 
   const checklistByCard = new Map<string, ChecklistItem[]>()
-  for (const c of checklistQ.rows) {
+  for (const c of checklistRows) {
     const arr = checklistByCard.get(c.card_id) ?? []
     arr.push({ id: c.id, text: c.text, done: c.done !== 0, position: c.position })
     checklistByCard.set(c.card_id, arr)
   }
 
   const commentCountByCard = new Map<string, number>(
-    commentCountQ.rows.map((r) => [r.card_id, Number(r.n)]),
+    commentCountRows.map((r) => [r.card_id, Number(r.n)]),
   )
 
   const fieldValuesByCard = new Map<string, CardFieldValue[]>()
-  for (const fv of fieldValuesQ.rows) {
+  for (const fv of fieldValueRows) {
     const arr = fieldValuesByCard.get(fv.card_id) ?? []
     arr.push({ fieldId: fv.field_id, value: fv.value })
     fieldValuesByCard.set(fv.card_id, arr)
   }
 
-  const lists: List[] = listsQ.rows.map((lr) => ({
+  const lists: List[] = listRows.map((lr) => ({
     id: lr.id,
     boardId: lr.board_id,
     title: lr.title,
@@ -193,7 +149,7 @@ export async function getBoardFull(
   }))
   const listById = new Map(lists.map((l) => [l.id, l]))
 
-  for (const cr of cardsQ.rows) {
+  for (const cr of cardRows) {
     const list = listById.get(cr.list_id)
     if (!list) continue
     const card: Card = {

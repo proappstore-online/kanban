@@ -1,7 +1,8 @@
-import { app } from '../app'
 import type { Board, BoardSummary } from '../../types'
-import { STATUS_KINDS, STATUS_LABEL } from '../../types'
+import { STATUS_LABEL } from '../../types'
+import { app } from '../app'
 import { ensureMigrated, rid } from './core'
+import { q, x } from '../actions'
 
 export interface BoardRow {
   id: string
@@ -30,10 +31,7 @@ export function rowToBoard(r: BoardRow): Board {
 
 export async function listBoards(tenantId: string): Promise<BoardSummary[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<BoardRow>(
-    `SELECT * FROM boards WHERE tenant_id = ? AND archived = 0 ORDER BY updated_at DESC`,
-    [tenantId],
-  )
+  const rows = await q<BoardRow>('list_boards', { tenant_id: tenantId })
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -60,21 +58,23 @@ export async function createBoard(
   if (!me) throw new Error('Sign in required.')
   const id = rid()
   const now = Date.now()
-  await app.db.execute(
-    `INSERT INTO boards (id, tenant_id, name, feature_id, archived, created_by, created_at, updated_at)
-     VALUES (?,?,?,?,0,?,?,?)`,
-    [id, tenantId, name, featureId ?? null, me.id, now, now],
-  )
-  // Seed four canonical workflow lists, spaced by 1024 so reorders never
-  // collide with the seed positions.
-  for (let i = 0; i < STATUS_KINDS.length; i++) {
-    const kind = STATUS_KINDS[i]
-    await app.db.execute(
-      `INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at)
-       VALUES (?,?,?,?,?,0,?,?)`,
-      [rid(), tenantId, id, STATUS_LABEL[kind], (i + 1) * 1024, kind, now],
-    )
-  }
+  // One atomic action creates the board and seeds the four canonical workflow
+  // lists (New / In progress / Testing / Launched), spaced by 1024 so reorders
+  // never collide with the seed positions.
+  await x('create_board', {
+    id,
+    tenant_id: tenantId,
+    name,
+    feature_id: featureId ?? null,
+    list_new_id: rid(),
+    list_new_title: STATUS_LABEL.new,
+    list_wip_id: rid(),
+    list_wip_title: STATUS_LABEL.wip,
+    list_testing_id: rid(),
+    list_testing_title: STATUS_LABEL.testing,
+    list_launched_id: rid(),
+    list_launched_title: STATUS_LABEL.launched,
+  })
   return {
     id,
     tenantId,
@@ -92,10 +92,7 @@ export async function setBoardFeature(
   featureId: string | null,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE boards SET feature_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    [featureId, Date.now(), boardId, tenantId],
-  )
+  await x('set_board_feature', { tenant_id: tenantId, board_id: boardId, feature_id: featureId })
 }
 
 export async function renameBoard(
@@ -104,10 +101,7 @@ export async function renameBoard(
   name: string,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE boards SET name = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    [name, Date.now(), boardId, tenantId],
-  )
+  await x('rename_board', { tenant_id: tenantId, board_id: boardId, name })
 }
 
 export async function setBoardBackground(
@@ -116,44 +110,13 @@ export async function setBoardBackground(
   background: string | null,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE boards SET background = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    [background, Date.now(), boardId, tenantId],
-  )
+  await x('set_board_background', { tenant_id: tenantId, board_id: boardId, background })
 }
 
 export async function deleteBoard(tenantId: string, boardId: string): Promise<void> {
   await ensureMigrated()
-  // Cascade by hand — D1 doesn't enforce FK cascades. Each subquery scopes
-  // to `WHERE board_id = ?` rather than threading card_id lists through JS,
-  // so cleanup is one round-trip per child table. SQL inlined per table
-  // (rather than via a shared template-string fragment) so static scanners
-  // can see each statement is fully parameterized.
-  await app.db.execute(
-    `DELETE FROM mentions WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
-    [boardId],
-  )
-  await app.db.execute(
-    `DELETE FROM comments WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
-    [boardId],
-  )
-  await app.db.execute(
-    `DELETE FROM card_labels WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
-    [boardId],
-  )
-  await app.db.execute(
-    `DELETE FROM card_assignees WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
-    [boardId],
-  )
-  await app.db.execute(
-    `DELETE FROM checklist_items WHERE card_id IN (SELECT id FROM cards WHERE board_id = ?)`,
-    [boardId],
-  )
-  await app.db.execute(`DELETE FROM cards    WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM lists    WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM labels   WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM activity WHERE board_id = ? AND tenant_id = ?`, [boardId, tenantId])
-  await app.db.execute(`DELETE FROM boards   WHERE id       = ? AND tenant_id = ?`, [boardId, tenantId])
+  // Atomic cascade — one D1 transaction, membership-guarded per statement.
+  await x('delete_board', { tenant_id: tenantId, board_id: boardId })
 }
 
 /**
@@ -162,8 +125,5 @@ export async function deleteBoard(tenantId: string, boardId: string): Promise<vo
  * the top of the "recently updated" sort.
  */
 export async function touchBoard(tenantId: string, boardId: string): Promise<void> {
-  await app.db.execute(
-    `UPDATE boards SET updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    [Date.now(), boardId, tenantId],
-  )
+  await x('touch_board', { tenant_id: tenantId, board_id: boardId })
 }

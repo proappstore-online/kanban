@@ -1,6 +1,7 @@
 import { app } from '../app'
 import type { Comment, Member } from '../../types'
 import { ensureMigrated, rid } from './core'
+import { q, x } from '../actions'
 
 interface CommentRow {
   id: string
@@ -29,21 +30,9 @@ function rowToComment(r: CommentRow): Comment {
   }
 }
 
-const COMMENT_SELECT = `
-  SELECT c.id, c.tenant_id, c.card_id, c.author_id, c.body, c.created_at, c.updated_at, c.deleted_at,
-         m.display_name AS author_display_name, m.avatar_url AS author_avatar_url
-    FROM comments c
-    LEFT JOIN members m ON m.tenant_id = c.tenant_id AND m.user_id = c.author_id
-`
-
 export async function listComments(tenantId: string, cardId: string): Promise<Comment[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<CommentRow>(
-    `${COMMENT_SELECT}
-     WHERE c.tenant_id = ? AND c.card_id = ? AND c.deleted_at IS NULL
-     ORDER BY c.created_at ASC`,
-    [tenantId, cardId],
-  )
+  const rows = await q<CommentRow>('list_comments', { tenant_id: tenantId, card_id: cardId })
   return rows.map(rowToComment)
 }
 
@@ -56,14 +45,10 @@ export async function listCommentCountsByCard(
   boardId: string,
 ): Promise<Map<string, number>> {
   await ensureMigrated()
-  const { rows } = await app.db.query<{ card_id: string; n: number }>(
-    `SELECT c.card_id, COUNT(*) AS n
-       FROM comments c
-       JOIN cards cards ON cards.id = c.card_id
-      WHERE c.tenant_id = ? AND cards.board_id = ? AND c.deleted_at IS NULL
-      GROUP BY c.card_id`,
-    [tenantId, boardId],
-  )
+  const rows = await q<{ card_id: string; n: number }>('list_board_comment_counts', {
+    tenant_id: tenantId,
+    board_id: boardId,
+  })
   return new Map(rows.map((r) => [r.card_id, Number(r.n)]))
 }
 
@@ -87,20 +72,18 @@ export async function addComment(
 
   const id = rid()
   const now = Date.now()
-  await app.db.execute(
-    `INSERT INTO comments (id, tenant_id, card_id, author_id, body, created_at)
-     VALUES (?,?,?,?,?,?)`,
-    [id, tenantId, cardId, me.id, trimmed, now],
-  )
+  await x('add_comment', { id, tenant_id: tenantId, card_id: cardId, body: trimmed })
 
   const mentioned = parseMentions(trimmed, members).filter((uid) => uid !== me.id)
   for (const uid of mentioned) {
-    await app.db.execute(
-      `INSERT INTO mentions
-         (id, tenant_id, comment_id, card_id, board_id, mentioned_user_id, actor_id, created_at)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [rid(), tenantId, id, cardId, boardId, uid, me.id, now],
-    )
+    await x('add_mention', {
+      id: rid(),
+      tenant_id: tenantId,
+      comment_id: id,
+      card_id: cardId,
+      board_id: boardId,
+      mentioned_user_id: uid,
+    })
   }
 
   return {
@@ -121,15 +104,9 @@ export async function deleteComment(tenantId: string, commentId: string): Promis
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  // Soft delete — keeps activity-feed audit trail intact. Authors only
-  // (verified by the WHERE clause so users can't tamper with others').
-  await app.db.execute(
-    `UPDATE comments SET deleted_at = ? WHERE id = ? AND tenant_id = ? AND author_id = ?`,
-    [Date.now(), commentId, tenantId, me.id],
-  )
-  // Also clear mention rows for this comment so the bell doesn't show
-  // stale references to a deleted comment.
-  await app.db.execute(`DELETE FROM mentions WHERE comment_id = ?`, [commentId])
+  // Soft delete (authors only) + clear mention rows so the bell doesn't show
+  // stale references. Atomic; the action guards author-only server-side.
+  await x('delete_comment', { tenant_id: tenantId, comment_id: commentId })
 }
 
 /**

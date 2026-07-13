@@ -20,8 +20,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.6)
       '@proappstore/sdk':
-        specifier: ^1.9.0
-        version: 1.9.0(react@19.2.6)
+        specifier: ^1.16.26
+        version: 1.16.36(react@19.2.6)
       react:
         specifier: ^19.2.5
         version: 19.2.6
@@ -597,9 +597,6 @@ packages:
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
 
-  '@freeappstore/sdk@0.7.1':
-    resolution: {integrity: sha512-yxcNe2oVM+ZJf7Lj5odFeQtkXZBMfyT/fR7Tq7XBlOvFSqfXNtmNNiJGuqCHKal/NTNaUcdkEzNkKYlaNzkI/w==}
-
   '@isaacs/cliui@9.0.0':
     resolution: {integrity: sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg==}
     engines: {node: '>=18'}
@@ -637,8 +634,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  '@proappstore/sdk@1.9.0':
-    resolution: {integrity: sha512-GqxXtA2sauXyF07Kk841FOcsRsW0EtnZmpUvFqI11ldL/kv/C4VUs2miFQfqF2OqYk7fN8tcGx2/wx1qRzmSLw==}
+  '@proappstore/sdk@1.16.36':
+    resolution: {integrity: sha512-RwC3UhFJsF0CoDENUjWb6yMUAvxgCEflpos50BUSmMRR/CfLryeXz+t+FgAwgkclOlGqkdgzQ18JZ7hs62XG5g==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
@@ -2832,8 +2829,6 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@freeappstore/sdk@0.7.1': {}
-
   '@isaacs/cliui@9.0.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -2873,9 +2868,7 @@ snapshots:
     dependencies:
       playwright: 1.60.0
 
-  '@proappstore/sdk@1.9.0(react@19.2.6)':
-    dependencies:
-      '@freeappstore/sdk': 0.7.1
+  '@proappstore/sdk@1.16.36(react@19.2.6)':
     optionalDependencies:
       react: 19.2.6
 

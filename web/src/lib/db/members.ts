@@ -1,6 +1,7 @@
 import { app } from '../app'
 import type { Member, Role } from '../../types'
 import { ensureMigrated } from './core'
+import { q, x } from '../actions'
 
 interface MemberRow {
   id: string
@@ -28,10 +29,7 @@ function rowToMember(r: MemberRow): Member {
 
 export async function listMembers(tenantId: string): Promise<Member[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<MemberRow>(
-    `SELECT * FROM members WHERE tenant_id = ? ORDER BY joined_at ASC`,
-    [tenantId],
-  )
+  const rows = await q<MemberRow>('list_members', { tenant_id: tenantId })
   return rows.map(rowToMember)
 }
 
@@ -41,33 +39,24 @@ export async function updateMemberRole(
   role: Role,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE members SET role = ? WHERE id = ? AND tenant_id = ?`,
-    [role, memberId, tenantId],
-  )
+  await x('update_member_role', { tenant_id: tenantId, member_id: memberId, role })
 }
 
 export async function removeMember(tenantId: string, memberId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM members WHERE id = ? AND tenant_id = ?`, [memberId, tenantId])
+  await x('remove_member', { tenant_id: tenantId, member_id: memberId })
 }
 
 export async function updateMyDisplayName(tenantId: string, displayName: string): Promise<void> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  await app.db.execute(
-    `UPDATE members SET display_name = ? WHERE tenant_id = ? AND user_id = ?`,
-    [displayName, tenantId, me.id],
-  )
+  await x('update_my_display_name', { tenant_id: tenantId, display_name: displayName })
 }
 
 export async function updateMyEmail(tenantId: string, email: string): Promise<void> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  await app.db.execute(
-    `UPDATE members SET email = ? WHERE tenant_id = ? AND user_id = ?`,
-    [email || null, tenantId, me.id],
-  )
+  await x('update_my_email', { tenant_id: tenantId, email: email || null })
 }

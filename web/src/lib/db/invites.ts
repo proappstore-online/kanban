@@ -4,6 +4,7 @@ import { ensureMigrated, rid } from './core'
 import { rowToWorkspace } from './workspaces'
 import { logActivity } from './activity'
 import { fireBoardPatch } from '../realtime'
+import { q, x } from '../actions'
 
 interface InviteRow {
   id: string
@@ -56,11 +57,13 @@ export async function createInvite(tenantId: string, role: Role = 'member'): Pro
   const code = inviteCode()
   const now = Date.now()
   const expires = now + 7 * 24 * 60 * 60 * 1000 // 7-day default
-  await app.db.execute(
-    `INSERT INTO invites (id, tenant_id, code, role, created_by, expires_at, created_at)
-     VALUES (?,?,?,?,?,?,?)`,
-    [id, tenantId, code, role, me.id, expires, now],
-  )
+  await x('create_invite', {
+    id,
+    tenant_id: tenantId,
+    code,
+    role,
+    expires_at: expires,
+  })
   return {
     id,
     tenantId,
@@ -74,19 +77,13 @@ export async function createInvite(tenantId: string, role: Role = 'member'): Pro
 
 export async function listInvites(tenantId: string): Promise<Invite[]> {
   await ensureMigrated()
-  const now = Date.now()
-  const { rows } = await app.db.query<InviteRow>(
-    `SELECT * FROM invites
-      WHERE tenant_id = ? AND (expires_at IS NULL OR expires_at > ?)
-   ORDER BY created_at DESC`,
-    [tenantId, now],
-  )
+  const rows = await q<InviteRow>('list_invites', { tenant_id: tenantId })
   return rows.map(rowToInvite)
 }
 
 export async function revokeInvite(tenantId: string, inviteId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM invites WHERE id = ? AND tenant_id = ?`, [inviteId, tenantId])
+  await x('revoke_invite', { tenant_id: tenantId, invite_id: inviteId })
 }
 
 /**
@@ -101,33 +98,27 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  const now = Date.now()
-  const { rows } = await app.db.query<InviteRow>(
-    `SELECT * FROM invites
-      WHERE code = ?
-        AND (expires_at IS NULL OR expires_at > ?)
-      LIMIT 1`,
-    [code, now],
-  )
+  const rows = await q<InviteRow>('find_invite_by_code', { code })
   const invite = rows[0]
   if (!invite) return null
 
-  const { rows: existingMembers } = await app.db.query<{ id: string }>(
-    `SELECT id FROM members WHERE tenant_id = ? AND user_id = ?`,
-    [invite.tenant_id, me.id],
-  )
+  const existingMembers = await q<{ id: string }>('get_my_membership', {
+    tenant_id: invite.tenant_id,
+  })
   if (existingMembers.length === 0) {
-    await app.db.execute(
-      `INSERT INTO members (id, tenant_id, user_id, role, display_name, avatar_url, joined_at)
-       VALUES (?,?,?,?,?,?,?)`,
-      [rid(), invite.tenant_id, me.id, invite.role, me.login ?? 'New member', me.avatarUrl ?? null, now],
-    )
+    // The action derives the role from the server-side invite row (never the
+    // client) and is a no-op if the caller is somehow already a member.
+    await x('redeem_invite', {
+      id: rid(),
+      code,
+      display_name: me.login ?? 'New member',
+      avatar_url: me.avatarUrl ?? null,
+    })
 
     // Notify existing members via activity feed on all boards
-    const { rows: boardIds } = await app.db.query<{ id: string }>(
-      `SELECT id FROM boards WHERE tenant_id = ? AND archived = 0`,
-      [invite.tenant_id],
-    )
+    const boardIds = await q<{ id: string }>('list_active_board_ids', {
+      tenant_id: invite.tenant_id,
+    })
     for (const b of boardIds) {
       logActivity(invite.tenant_id, b.id, 'member.joined', {
         displayName: me.login ?? 'New member',
@@ -136,9 +127,6 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
     }
   }
 
-  const { rows: ws } = await app.db.query<WorkspaceRow>(
-    `SELECT * FROM workspaces WHERE id = ? LIMIT 1`,
-    [invite.tenant_id],
-  )
+  const ws = await q<WorkspaceRow>('get_workspace', { tenant_id: invite.tenant_id })
   return ws[0] ? rowToWorkspace(ws[0]) : null
 }

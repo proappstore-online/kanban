@@ -1,6 +1,7 @@
 import { app } from '../app'
 import type { Role, Workspace, WorkspaceWithRole } from '../../types'
 import { ensureMigrated, rid } from './core'
+import { q, x } from '../actions'
 
 interface WorkspaceRow {
   id: string
@@ -43,14 +44,7 @@ export async function listMyWorkspaces(): Promise<WorkspaceWithRole[]> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) return []
-  const { rows } = await app.db.query<WorkspaceWithRoleRow>(
-    `SELECT w.*, m.role
-       FROM workspaces w
-       JOIN members m ON m.tenant_id = w.id
-      WHERE m.user_id = ?
-   ORDER BY w.created_at DESC`,
-    [me.id],
-  )
+  const rows = await q<WorkspaceWithRoleRow>('list_my_workspaces')
   return rows.map((r) => ({ ...rowToWorkspace(r), role: r.role }))
 }
 
@@ -61,21 +55,20 @@ export async function createWorkspace(name: string): Promise<Workspace> {
   const id = rid()
   const slug = slugify(name)
   const now = Date.now()
-  await app.db.execute(
-    `INSERT INTO workspaces (id, slug, name, owner_user_id, created_at) VALUES (?,?,?,?,?)`,
-    [id, slug, name, me.id, now],
-  )
-  await app.db.execute(
-    `INSERT INTO members (id, tenant_id, user_id, role, display_name, avatar_url, joined_at)
-     VALUES (?,?,?,?,?,?,?)`,
-    [rid(), id, me.id, 'owner', me.login ?? 'You', me.avatarUrl ?? null, now],
-  )
+  await x('create_workspace', {
+    id,
+    member_id: rid(),
+    slug,
+    name,
+    display_name: me.login ?? 'You',
+    avatar_url: me.avatarUrl ?? null,
+  })
   return { id, slug, name, ownerUserId: me.id, createdAt: now }
 }
 
 export async function renameWorkspace(workspaceId: string, name: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`UPDATE workspaces SET name = ? WHERE id = ?`, [name, workspaceId])
+  await x('rename_workspace', { tenant_id: workspaceId, name })
 }
 
 /**
@@ -89,10 +82,7 @@ export async function leaveWorkspace(workspaceId: string): Promise<void> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  await app.db.execute(
-    `DELETE FROM members WHERE tenant_id = ? AND user_id = ? AND role != 'owner'`,
-    [workspaceId, me.id],
-  )
+  await x('leave_workspace', { tenant_id: workspaceId })
 }
 
 /**
@@ -108,34 +98,11 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  // Verify caller is owner
-  const { rows } = await app.db.query<{ owner_user_id: string }>(
-    `SELECT owner_user_id FROM workspaces WHERE id = ?`,
-    [workspaceId],
-  )
+  // Verify caller is owner (the action also guards owner-only server-side).
+  const rows = await q<{ owner_user_id: string }>('get_workspace_owner', { tenant_id: workspaceId })
   if (!rows[0] || rows[0].owner_user_id !== me.id) throw new Error('Only the owner can delete a workspace.')
-  // Cascade delete all children by tenant_id
-  const tid = workspaceId
-  // Leaf tables first, then parents. All have tenant_id.
-  // D1 doesn't enforce FK constraints but this order is correct regardless.
-  await app.db.execute(`DELETE FROM mentions WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM comments WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM card_labels WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM card_assignees WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM checklist_items WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM activity WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM invites WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM card_field_values WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM custom_fields WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM card_watchers WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM starred_boards WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM cards WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM labels WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM lists WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM boards WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM features WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM members WHERE tenant_id = ?`, [tid])
-  await app.db.execute(`DELETE FROM workspaces WHERE id = ?`, [tid])
+  // Atomic cascade delete — one D1 transaction, owner-guarded per statement.
+  await x('delete_workspace', { tenant_id: workspaceId })
 }
 
 export async function transferOwnership(
@@ -146,21 +113,10 @@ export async function transferOwnership(
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
   if (newOwnerUserId === me.id) return
-  const { rows: target } = await app.db.query<{ id: string }>(
-    `SELECT id FROM members WHERE tenant_id = ? AND user_id = ?`,
-    [workspaceId, newOwnerUserId],
-  )
+  const target = await q<{ id: string }>('get_workspace_member', {
+    tenant_id: workspaceId,
+    user_id: newOwnerUserId,
+  })
   if (target.length === 0) throw new Error('Target user is not a member.')
-  await app.db.execute(
-    `UPDATE workspaces SET owner_user_id = ? WHERE id = ? AND owner_user_id = ?`,
-    [newOwnerUserId, workspaceId, me.id],
-  )
-  await app.db.execute(
-    `UPDATE members SET role = 'admin' WHERE tenant_id = ? AND user_id = ?`,
-    [workspaceId, me.id],
-  )
-  await app.db.execute(
-    `UPDATE members SET role = 'owner' WHERE tenant_id = ? AND user_id = ?`,
-    [workspaceId, newOwnerUserId],
-  )
+  await x('transfer_ownership', { tenant_id: workspaceId, new_owner_user_id: newOwnerUserId })
 }

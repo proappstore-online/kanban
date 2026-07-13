@@ -1,6 +1,7 @@
 import { app } from '../app'
 import type { AssignedTask, ListKind } from '../../types'
 import { ensureMigrated } from './core'
+import { q } from '../actions'
 
 interface AssignedTaskRow {
   card_id: string
@@ -27,38 +28,7 @@ export async function listMyTasks(tenantId: string): Promise<AssignedTask[]> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) return []
-  const { rows } = await app.db.query<AssignedTaskRow>(
-    `SELECT
-       c.id          AS card_id,
-       c.title       AS card_title,
-       b.id          AS board_id,
-       b.name        AS board_name,
-       b.feature_id  AS feature_id,
-       f.name        AS feature_name,
-       l.id          AS list_id,
-       l.title       AS list_title,
-       l.kind        AS list_kind,
-       c.due_at      AS due_at,
-       c.eta_at      AS eta_at,
-       c.updated_at  AS updated_at
-     FROM card_assignees ca
-     JOIN cards c    ON c.id = ca.card_id
-     JOIN boards b   ON b.id = c.board_id
-     JOIN lists  l   ON l.id = c.list_id
-     LEFT JOIN features f ON f.id = b.feature_id
-     WHERE ca.tenant_id = ? AND ca.user_id = ?
-       AND c.archived = 0 AND b.archived = 0 AND l.archived = 0
-     ORDER BY
-       CASE l.kind
-         WHEN 'new' THEN 0
-         WHEN 'wip' THEN 1
-         WHEN 'testing' THEN 2
-         WHEN 'launched' THEN 3
-         ELSE 4
-       END,
-       c.updated_at DESC`,
-    [tenantId, me.id],
-  )
+  const rows = await q<AssignedTaskRow>('list_my_tasks', { tenant_id: tenantId })
   return rows.map((r) => ({
     cardId: r.card_id,
     cardTitle: r.card_title,

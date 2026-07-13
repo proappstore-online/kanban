@@ -1,7 +1,7 @@
-import { app } from '../app'
 import type { CustomField, CustomFieldKind } from '../../types'
 import { between } from '../frac'
 import { ensureMigrated, rid } from './core'
+import { q, x } from '../actions'
 
 interface FieldRow {
   id: string
@@ -27,10 +27,7 @@ function rowToField(r: FieldRow): CustomField {
 
 export async function listCustomFields(tenantId: string, boardId: string): Promise<CustomField[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<FieldRow>(
-    `SELECT * FROM custom_fields WHERE tenant_id = ? AND board_id = ? ORDER BY position`,
-    [tenantId, boardId],
-  )
+  const rows = await q<FieldRow>('list_custom_fields', { tenant_id: tenantId, board_id: boardId })
   return rows.map(rowToField)
 }
 
@@ -45,12 +42,15 @@ export async function createCustomField(
   await ensureMigrated()
   const id = rid()
   const position = between(afterPosition ?? null, null)
-  const now = Date.now()
-  await app.db.execute(
-    `INSERT INTO custom_fields (id, tenant_id, board_id, name, kind, options, position, created_at)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [id, tenantId, boardId, name, kind, options ?? null, position, now],
-  )
+  await x('create_custom_field', {
+    id,
+    tenant_id: tenantId,
+    board_id: boardId,
+    name,
+    kind,
+    options: options ?? null,
+    position,
+  })
   return { id, boardId, name, kind, options, position }
 }
 
@@ -60,23 +60,23 @@ export async function updateCustomField(
   patch: { name?: string; kind?: CustomFieldKind; options?: string | null },
 ): Promise<void> {
   await ensureMigrated()
-  const sets: string[] = []
-  const params: unknown[] = []
-  if (patch.name !== undefined) { sets.push('name = ?'); params.push(patch.name) }
-  if (patch.kind !== undefined) { sets.push('kind = ?'); params.push(patch.kind) }
-  if (patch.options !== undefined) { sets.push('options = ?'); params.push(patch.options) }
-  if (sets.length === 0) return
-  params.push(fieldId, tenantId)
-  await app.db.execute(
-    `UPDATE custom_fields SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`,
-    params,
-  )
+  if (patch.name === undefined && patch.kind === undefined && patch.options === undefined) return
+  // name/kind are non-nullable → COALESCE handles "skip"; options is nullable
+  // so it uses an explicit *_set flag to distinguish skip from clear.
+  await x('update_custom_field', {
+    tenant_id: tenantId,
+    field_id: fieldId,
+    name: patch.name ?? null,
+    kind: patch.kind ?? null,
+    options: patch.options ?? null,
+    options_set: patch.options !== undefined ? 1 : 0,
+  })
 }
 
 export async function deleteCustomField(tenantId: string, fieldId: string): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(`DELETE FROM card_field_values WHERE field_id = ? AND tenant_id = ?`, [fieldId, tenantId])
-  await app.db.execute(`DELETE FROM custom_fields WHERE id = ? AND tenant_id = ?`, [fieldId, tenantId])
+  // Delete the field and its stored values — one atomic action.
+  await x('delete_custom_field', { tenant_id: tenantId, field_id: fieldId })
 }
 
 export async function setCardFieldValue(
@@ -87,16 +87,8 @@ export async function setCardFieldValue(
 ): Promise<void> {
   await ensureMigrated()
   if (value === null || value === '') {
-    await app.db.execute(
-      `DELETE FROM card_field_values WHERE card_id = ? AND field_id = ? AND tenant_id = ?`,
-      [cardId, fieldId, tenantId],
-    )
+    await x('clear_card_field_value', { tenant_id: tenantId, card_id: cardId, field_id: fieldId })
   } else {
-    await app.db.execute(
-      `INSERT INTO card_field_values (tenant_id, card_id, field_id, value)
-       VALUES (?,?,?,?)
-       ON CONFLICT(card_id, field_id) DO UPDATE SET value = ?`,
-      [tenantId, cardId, fieldId, value, value],
-    )
+    await x('set_card_field_value', { tenant_id: tenantId, card_id: cardId, field_id: fieldId, value })
   }
 }

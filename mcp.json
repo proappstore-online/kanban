@@ -1,0 +1,1072 @@
+{
+  "tools": [
+    {
+      "name": "list_my_workspaces",
+      "description": "Workspaces the caller belongs to, with their role, newest first",
+      "operation": "query",
+      "sql": "SELECT w.*, m.role FROM workspaces w JOIN members m ON m.tenant_id = w.id WHERE m.user_id = :__user_id ORDER BY w.created_at DESC",
+      "params": {},
+      "requires_auth": true
+    },
+    {
+      "name": "create_workspace",
+      "description": "Create a workspace owned by the caller together with their owner membership (atomic — a workspace can never exist without its owner member)",
+      "operation": "batch",
+      "statements": [
+        "INSERT INTO workspaces (id, slug, name, owner_user_id, created_at) VALUES (:id, :slug, :name, :__user_id, :__now)",
+        "INSERT INTO members (id, tenant_id, user_id, role, display_name, avatar_url, joined_at) VALUES (:member_id, :id, :__user_id, 'owner', :display_name, :avatar_url, :__now)"
+      ],
+      "params": {
+        "id": { "type": "string" },
+        "member_id": { "type": "string" },
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "display_name": { "type": "string" },
+        "avatar_url": { "type": "string", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "rename_workspace",
+      "description": "Rename a workspace (owner/admin only)",
+      "operation": "execute",
+      "sql": "UPDATE workspaces SET name = :name WHERE id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id AND gm.role IN ('owner','admin'))",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "leave_workspace",
+      "description": "The caller leaves a workspace (owners cannot leave — must transfer first)",
+      "operation": "execute",
+      "sql": "DELETE FROM members WHERE tenant_id = :tenant_id AND user_id = :__user_id AND role != 'owner'",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "get_workspace_owner",
+      "description": "Owner user id of a workspace (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT owner_user_id FROM workspaces WHERE id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_workspace",
+      "description": "Permanently delete a workspace and every child row (workspace owner only) — atomic cascade, never half-deleted",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM mentions WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM comments WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM card_labels WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM card_assignees WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM checklist_items WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM activity WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM invites WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM card_field_values WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM custom_fields WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM card_watchers WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM starred_boards WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM cards WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM labels WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM lists WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM boards WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM features WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM members WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :__user_id)",
+        "DELETE FROM workspaces WHERE id = :tenant_id AND owner_user_id = :__user_id"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "get_workspace_member",
+      "description": "One membership row for a user in a workspace (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT id FROM members WHERE tenant_id = :tenant_id AND user_id = :user_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "user_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "transfer_ownership",
+      "description": "Transfer workspace ownership to another member (current owner only) — demotes the old owner to admin, promotes the target to owner, atomically",
+      "operation": "batch",
+      "statements": [
+        "UPDATE workspaces SET owner_user_id = :new_owner_user_id WHERE id = :tenant_id AND owner_user_id = :__user_id AND EXISTS (SELECT 1 FROM members tm WHERE tm.tenant_id = :tenant_id AND tm.user_id = :new_owner_user_id)",
+        "UPDATE members SET role = 'admin' WHERE tenant_id = :tenant_id AND user_id = :__user_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :new_owner_user_id)",
+        "UPDATE members SET role = 'owner' WHERE tenant_id = :tenant_id AND user_id = :new_owner_user_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :new_owner_user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "new_owner_user_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_members",
+      "description": "All members of a workspace, oldest first (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM members WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY joined_at ASC",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "update_member_role",
+      "description": "Change a member's role (owner/admin only; cannot change the owner's row)",
+      "operation": "execute",
+      "sql": "UPDATE members SET role = :role WHERE id = :member_id AND tenant_id = :tenant_id AND role != 'owner' AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id AND gm.role IN ('owner','admin'))",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "member_id": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "remove_member",
+      "description": "Remove a member from a workspace (owner/admin only; cannot remove the owner)",
+      "operation": "execute",
+      "sql": "DELETE FROM members WHERE id = :member_id AND tenant_id = :tenant_id AND role != 'owner' AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id AND gm.role IN ('owner','admin'))",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "member_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "update_my_display_name",
+      "description": "Update the caller's own display name in a workspace",
+      "operation": "execute",
+      "sql": "UPDATE members SET display_name = :display_name WHERE tenant_id = :tenant_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "display_name": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "update_my_email",
+      "description": "Update the caller's own email in a workspace",
+      "operation": "execute",
+      "sql": "UPDATE members SET email = :email WHERE tenant_id = :tenant_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "email": { "type": "string", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_invite",
+      "description": "Create a workspace invite code (owner/admin only; creator is the caller)",
+      "operation": "execute",
+      "sql": "INSERT INTO invites (id, tenant_id, code, role, created_by, expires_at, created_at) SELECT :id, :tenant_id, :code, :role, :__user_id, :expires_at, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id AND gm.role IN ('owner','admin'))",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "code": { "type": "string" },
+        "role": { "type": "string" },
+        "expires_at": { "type": "integer", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_invites",
+      "description": "Active (unexpired) invites for a workspace (owner/admin only)",
+      "operation": "query",
+      "sql": "SELECT * FROM invites WHERE tenant_id = :tenant_id AND (expires_at IS NULL OR expires_at > :__now) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id AND gm.role IN ('owner','admin')) ORDER BY created_at DESC",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "revoke_invite",
+      "description": "Revoke (delete) an invite (owner/admin only)",
+      "operation": "execute",
+      "sql": "DELETE FROM invites WHERE id = :invite_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id AND gm.role IN ('owner','admin'))",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "invite_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "find_invite_by_code",
+      "description": "Look up a valid, unexpired invite by code (for redemption)",
+      "operation": "query",
+      "sql": "SELECT * FROM invites WHERE code = :code AND (expires_at IS NULL OR expires_at > :__now) LIMIT 1",
+      "params": {
+        "code": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "get_my_membership",
+      "description": "The caller's own membership id in a workspace, if any",
+      "operation": "query",
+      "sql": "SELECT id FROM members WHERE tenant_id = :tenant_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "redeem_invite",
+      "description": "Add the caller as a member of the workspace using a valid invite. The role is taken from the server-side invite row (never a client param); idempotent no-op if already a member.",
+      "operation": "execute",
+      "sql": "INSERT INTO members (id, tenant_id, user_id, role, display_name, avatar_url, joined_at) SELECT :id, i.tenant_id, :__user_id, i.role, :display_name, :avatar_url, :__now FROM invites i WHERE i.code = :code AND (i.expires_at IS NULL OR i.expires_at > :__now) AND NOT EXISTS (SELECT 1 FROM members m WHERE m.tenant_id = i.tenant_id AND m.user_id = :__user_id) LIMIT 1",
+      "params": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "display_name": { "type": "string" },
+        "avatar_url": { "type": "string", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_active_board_ids",
+      "description": "Ids of non-archived boards in a workspace (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT id FROM boards WHERE tenant_id = :tenant_id AND archived = 0 AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "get_workspace",
+      "description": "One workspace row by id (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM workspaces WHERE id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) LIMIT 1",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_boards",
+      "description": "Non-archived boards in a workspace, most recently updated first (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM boards WHERE tenant_id = :tenant_id AND archived = 0 AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY updated_at DESC",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_board",
+      "description": "Create a board and auto-seed its four workflow lists (caller must be a member). Statements are atomic.",
+      "operation": "batch",
+      "statements": [
+        "INSERT INTO boards (id, tenant_id, name, feature_id, archived, created_by, created_at, updated_at) SELECT :id, :tenant_id, :name, :feature_id, 0, :__user_id, :__now, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_new_id, :tenant_id, :id, :list_new_title, 1024, 0, 'new', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_wip_id, :tenant_id, :id, :list_wip_title, 2048, 0, 'wip', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_testing_id, :tenant_id, :id, :list_testing_title, 3072, 0, 'testing', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_launched_id, :tenant_id, :id, :list_launched_title, 4096, 0, 'launched', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)"
+      ],
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "name": { "type": "string" },
+        "feature_id": { "type": "string", "optional": true },
+        "list_new_id": { "type": "string" },
+        "list_new_title": { "type": "string" },
+        "list_wip_id": { "type": "string" },
+        "list_wip_title": { "type": "string" },
+        "list_testing_id": { "type": "string" },
+        "list_testing_title": { "type": "string" },
+        "list_launched_id": { "type": "string" },
+        "list_launched_title": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "set_board_feature",
+      "description": "Set/clear a board's feature group (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE boards SET feature_id = :feature_id, updated_at = :__now WHERE id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "feature_id": { "type": "string", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "rename_board",
+      "description": "Rename a board (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE boards SET name = :name, updated_at = :__now WHERE id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "set_board_background",
+      "description": "Set/clear a board's background (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE boards SET background = :background, updated_at = :__now WHERE id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "background": { "type": "string", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "touch_board",
+      "description": "Bump a board's updated_at (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE boards SET updated_at = :__now WHERE id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_board",
+      "description": "Delete a board and cascade its lists/cards/children (caller must be a member) — atomic",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM mentions WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM comments WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_labels WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_assignees WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM checklist_items WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_field_values WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_watchers WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM lists WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM labels WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM custom_fields WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM starred_boards WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM activity WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM boards WHERE id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "get_board",
+      "description": "One board row (caller must be a member of the tenant)",
+      "operation": "query",
+      "sql": "SELECT * FROM boards WHERE id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) LIMIT 1",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_lists",
+      "description": "Non-archived lists on a board, in position order (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM lists WHERE board_id = :board_id AND tenant_id = :tenant_id AND archived = 0 AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY position",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_cards",
+      "description": "Non-archived cards on a board (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM cards WHERE board_id = :board_id AND tenant_id = :tenant_id AND archived = 0 AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY list_id, position",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_labels",
+      "description": "Labels on a board (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM labels WHERE board_id = :board_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_card_labels",
+      "description": "card_id/label_id pairs for a board's cards (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT cl.card_id, cl.label_id FROM card_labels cl JOIN cards c ON c.id = cl.card_id WHERE c.board_id = :board_id AND c.tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_assignees",
+      "description": "Assignees (with member display info) for a board's cards (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT ca.card_id, ca.user_id, m.display_name, m.avatar_url FROM card_assignees ca JOIN cards c ON c.id = ca.card_id JOIN members m ON m.tenant_id = ca.tenant_id AND m.user_id = ca.user_id WHERE c.board_id = :board_id AND c.tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_checklists",
+      "description": "Checklist items for a board's cards, in position order (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT ci.* FROM checklist_items ci JOIN cards c ON c.id = ci.card_id WHERE c.board_id = :board_id AND c.tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY ci.position",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_comment_counts",
+      "description": "Per-card comment counts for a board (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT c.card_id, COUNT(*) AS n FROM comments c JOIN cards cards ON cards.id = c.card_id WHERE c.tenant_id = :tenant_id AND cards.board_id = :board_id AND c.deleted_at IS NULL AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) GROUP BY c.card_id",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_field_values",
+      "description": "Custom field values for a board's cards (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT cfv.card_id, cfv.field_id, cfv.value FROM card_field_values cfv JOIN cards c ON c.id = cfv.card_id WHERE c.board_id = :board_id AND c.tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_list",
+      "description": "Create a list on a board (caller must be a member)",
+      "operation": "execute",
+      "sql": "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :id, :tenant_id, :board_id, :title, :position, 0, :kind, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "title": { "type": "string" },
+        "position": { "type": "number" },
+        "kind": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "rename_list",
+      "description": "Rename a list (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE lists SET title = :title WHERE id = :list_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "list_id": { "type": "string" },
+        "title": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "get_status_list_id",
+      "description": "Id of the non-archived list on a board with the given workflow kind (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT id FROM lists WHERE tenant_id = :tenant_id AND board_id = :board_id AND kind = :kind AND archived = 0 AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) LIMIT 1",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "kind": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "move_list",
+      "description": "Reposition a list (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE lists SET position = :position WHERE id = :list_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "list_id": { "type": "string" },
+        "position": { "type": "number" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_list",
+      "description": "Delete a list and cascade its cards/children (caller must be a member) — atomic",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM mentions WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM comments WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_labels WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_assignees WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM checklist_items WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_field_values WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_watchers WHERE tenant_id = :tenant_id AND card_id IN (SELECT id FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM cards WHERE list_id = :list_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM lists WHERE id = :list_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "list_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_card",
+      "description": "Create a card (caller must be a member; creator is the caller)",
+      "operation": "execute",
+      "sql": "INSERT INTO cards (id, tenant_id, board_id, list_id, position, title, archived, created_by, created_at, updated_at, version) SELECT :id, :tenant_id, :board_id, :list_id, :position, :title, 0, :__user_id, :__now, :__now, 1 WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "list_id": { "type": "string" },
+        "position": { "type": "number" },
+        "title": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "update_card",
+      "description": "Update card fields (caller must be a member). Any NULL patch param is ignored so only supplied fields change; bumps version + updated_at.",
+      "operation": "execute",
+      "sql": "UPDATE cards SET title = COALESCE(:title, title), description = CASE WHEN :description_set = 1 THEN :description ELSE description END, requirement = CASE WHEN :requirement_set = 1 THEN :requirement ELSE requirement END, acceptance_criteria = CASE WHEN :acceptance_criteria_set = 1 THEN :acceptance_criteria ELSE acceptance_criteria END, due_at = CASE WHEN :due_at_set = 1 THEN :due_at ELSE due_at END, eta_at = CASE WHEN :eta_at_set = 1 THEN :eta_at ELSE eta_at END, cover_url = CASE WHEN :cover_url_set = 1 THEN :cover_url ELSE cover_url END, updated_at = :__now, version = version + 1 WHERE id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "title": { "type": "string", "optional": true },
+        "description": { "type": "string", "optional": true },
+        "description_set": { "type": "integer" },
+        "requirement": { "type": "string", "optional": true },
+        "requirement_set": { "type": "integer" },
+        "acceptance_criteria": { "type": "string", "optional": true },
+        "acceptance_criteria_set": { "type": "integer" },
+        "due_at": { "type": "integer", "optional": true },
+        "due_at_set": { "type": "integer" },
+        "eta_at": { "type": "integer", "optional": true },
+        "eta_at_set": { "type": "integer" },
+        "cover_url": { "type": "string", "optional": true },
+        "cover_url_set": { "type": "integer" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_archived_cards",
+      "description": "Archived cards on a board with their list title (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT c.id, c.title, c.list_id, l.title AS list_title, c.updated_at FROM cards c LEFT JOIN lists l ON l.id = c.list_id WHERE c.tenant_id = :tenant_id AND c.board_id = :board_id AND c.archived = 1 AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY c.updated_at DESC",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "archive_card",
+      "description": "Soft-archive a card (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE cards SET archived = 1, updated_at = :__now, version = version + 1 WHERE id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "unarchive_card",
+      "description": "Restore an archived card (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE cards SET archived = 0, updated_at = :__now, version = version + 1 WHERE id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_card",
+      "description": "Hard-delete a card and every child row (caller must be a member) — atomic",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM mentions WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM comments WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_labels WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_assignees WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM checklist_items WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_field_values WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM card_watchers WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM cards WHERE id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "move_card",
+      "description": "Move a card to a list/position (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE cards SET list_id = :to_list_id, position = :position, updated_at = :__now, version = version + 1 WHERE id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "to_list_id": { "type": "string" },
+        "position": { "type": "number" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "add_assignee",
+      "description": "Assign a member to a card (caller must be a member; assigner is the caller)",
+      "operation": "execute",
+      "sql": "INSERT OR IGNORE INTO card_assignees (tenant_id, card_id, user_id, assigned_at, assigned_by) SELECT :tenant_id, :card_id, :user_id, :__now, :__user_id WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "user_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "remove_assignee",
+      "description": "Unassign a member from a card (caller must be a member)",
+      "operation": "execute",
+      "sql": "DELETE FROM card_assignees WHERE tenant_id = :tenant_id AND card_id = :card_id AND user_id = :user_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "user_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_label",
+      "description": "Create a board label of a given color (caller must be a member)",
+      "operation": "execute",
+      "sql": "INSERT INTO labels (id, tenant_id, board_id, color, name) SELECT :id, :tenant_id, :board_id, :color, '' WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "rename_board_label",
+      "description": "Rename a board label (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE labels SET name = :name WHERE id = :label_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "label_id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "set_card_labels",
+      "description": "Replace a card's label set (caller must be a member) — atomic clear + re-insert from a JSON array of label ids",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM card_labels WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "INSERT INTO card_labels (tenant_id, card_id, label_id) SELECT :tenant_id, :card_id, j.value FROM json_each(:label_ids_json) j WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "label_ids_json": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "set_checklist",
+      "description": "Replace a card's checklist (caller must be a member) — atomic clear + re-insert from a JSON array of {id,text,done,position}",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM checklist_items WHERE card_id = :card_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "INSERT INTO checklist_items (id, tenant_id, card_id, text, done, position, created_at) SELECT json_extract(j.value, '$.id'), :tenant_id, :card_id, json_extract(j.value, '$.text'), json_extract(j.value, '$.done'), json_extract(j.value, '$.position'), :__now FROM json_each(:items_json) j WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "items_json": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_comments",
+      "description": "Non-deleted comments on a card with author display info, oldest first (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT c.id, c.tenant_id, c.card_id, c.author_id, c.body, c.created_at, c.updated_at, c.deleted_at, m.display_name AS author_display_name, m.avatar_url AS author_avatar_url FROM comments c LEFT JOIN members m ON m.tenant_id = c.tenant_id AND m.user_id = c.author_id WHERE c.tenant_id = :tenant_id AND c.card_id = :card_id AND c.deleted_at IS NULL AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY c.created_at ASC",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "add_comment",
+      "description": "Add a comment to a card (caller must be a member; author is the caller)",
+      "operation": "execute",
+      "sql": "INSERT INTO comments (id, tenant_id, card_id, author_id, body, created_at) SELECT :id, :tenant_id, :card_id, :__user_id, :body, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "body": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "add_mention",
+      "description": "Record an @mention against a comment (caller must be a member; actor is the caller)",
+      "operation": "execute",
+      "sql": "INSERT INTO mentions (id, tenant_id, comment_id, card_id, board_id, mentioned_user_id, actor_id, created_at) SELECT :id, :tenant_id, :comment_id, :card_id, :board_id, :mentioned_user_id, :__user_id, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "comment_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "mentioned_user_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_comment",
+      "description": "Soft-delete the caller's own comment and clear its mention rows (authors only) — atomic",
+      "operation": "batch",
+      "statements": [
+        "UPDATE comments SET deleted_at = :__now WHERE id = :comment_id AND tenant_id = :tenant_id AND author_id = :__user_id",
+        "DELETE FROM mentions WHERE comment_id = :comment_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM comments c WHERE c.id = :comment_id AND c.author_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "comment_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_my_mentions",
+      "description": "The caller's @mentions in a workspace, newest first, with actor/comment/card context",
+      "operation": "query",
+      "sql": "SELECT m.*, actor.display_name AS actor_display_name, actor.avatar_url AS actor_avatar_url, c.body AS comment_body, cards.title AS card_title FROM mentions m LEFT JOIN members actor ON actor.tenant_id = m.tenant_id AND actor.user_id = m.actor_id LEFT JOIN comments c ON c.id = m.comment_id AND c.deleted_at IS NULL LEFT JOIN cards ON cards.id = m.card_id WHERE m.tenant_id = :tenant_id AND m.mentioned_user_id = :__user_id ORDER BY m.created_at DESC LIMIT :limit",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "limit": { "type": "integer", "default": 25, "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "count_unread_mentions",
+      "description": "Count of the caller's unread @mentions (excluding deleted comments) in a workspace",
+      "operation": "query",
+      "sql": "SELECT COUNT(*) AS n FROM mentions m JOIN comments c ON c.id = m.comment_id AND c.deleted_at IS NULL WHERE m.tenant_id = :tenant_id AND m.mentioned_user_id = :__user_id AND m.read_at IS NULL",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "mark_mention_read",
+      "description": "Mark one of the caller's mentions as read",
+      "operation": "execute",
+      "sql": "UPDATE mentions SET read_at = :__now WHERE id = :mention_id AND tenant_id = :tenant_id AND mentioned_user_id = :__user_id AND read_at IS NULL",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "mention_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "mark_all_mentions_read",
+      "description": "Mark all of the caller's unread mentions in a workspace as read",
+      "operation": "execute",
+      "sql": "UPDATE mentions SET read_at = :__now WHERE tenant_id = :tenant_id AND mentioned_user_id = :__user_id AND read_at IS NULL",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "log_activity",
+      "description": "Append an activity row (caller must be a member; actor is the caller)",
+      "operation": "execute",
+      "sql": "INSERT INTO activity (id, tenant_id, board_id, card_id, actor_id, kind, payload, created_at) SELECT :id, :tenant_id, :board_id, :card_id, :__user_id, :kind, :payload, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "card_id": { "type": "string", "optional": true },
+        "kind": { "type": "string" },
+        "payload": { "type": "string", "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_board_activity",
+      "description": "Recent activity on a board with actor display info, newest first (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT a.*, m.display_name AS actor_display_name, m.avatar_url AS actor_avatar_url FROM activity a LEFT JOIN members m ON m.tenant_id = a.tenant_id AND m.user_id = a.actor_id WHERE a.tenant_id = :tenant_id AND a.board_id = :board_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY a.created_at DESC LIMIT :limit",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "limit": { "type": "integer", "default": 50, "optional": true }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_features",
+      "description": "Features in a workspace, in sort order (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM features WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY sort_order, created_at",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "max_feature_sort_order",
+      "description": "Highest feature sort_order in a workspace (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT MAX(sort_order) AS n FROM features WHERE tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_feature",
+      "description": "Create a feature (caller must be a member)",
+      "operation": "execute",
+      "sql": "INSERT INTO features (id, tenant_id, name, sort_order, created_at) SELECT :id, :tenant_id, :name, :sort_order, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "name": { "type": "string" },
+        "sort_order": { "type": "integer" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "rename_feature",
+      "description": "Rename a feature (caller must be a member)",
+      "operation": "execute",
+      "sql": "UPDATE features SET name = :name WHERE id = :feature_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "feature_id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_feature",
+      "description": "Delete a feature and orphan its boards to Ungrouped (caller must be a member) — atomic",
+      "operation": "batch",
+      "statements": [
+        "UPDATE boards SET feature_id = NULL WHERE feature_id = :feature_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM features WHERE id = :feature_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "feature_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_my_tasks",
+      "description": "Every non-archived card assigned to the caller across a workspace, with board/feature/list context, ordered by workflow stage then recency",
+      "operation": "query",
+      "sql": "SELECT c.id AS card_id, c.title AS card_title, b.id AS board_id, b.name AS board_name, b.feature_id AS feature_id, f.name AS feature_name, l.id AS list_id, l.title AS list_title, l.kind AS list_kind, c.due_at AS due_at, c.eta_at AS eta_at, c.updated_at AS updated_at FROM card_assignees ca JOIN cards c ON c.id = ca.card_id JOIN boards b ON b.id = c.board_id JOIN lists l ON l.id = c.list_id LEFT JOIN features f ON f.id = b.feature_id WHERE ca.tenant_id = :tenant_id AND ca.user_id = :__user_id AND c.archived = 0 AND b.archived = 0 AND l.archived = 0 ORDER BY CASE l.kind WHEN 'new' THEN 0 WHEN 'wip' THEN 1 WHEN 'testing' THEN 2 WHEN 'launched' THEN 3 ELSE 4 END, c.updated_at DESC",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "star_board",
+      "description": "Star a board for the caller",
+      "operation": "execute",
+      "sql": "INSERT OR IGNORE INTO starred_boards (tenant_id, board_id, user_id, starred_at) SELECT :tenant_id, :board_id, :__user_id, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "unstar_board",
+      "description": "Remove the caller's star from a board",
+      "operation": "execute",
+      "sql": "DELETE FROM starred_boards WHERE tenant_id = :tenant_id AND board_id = :board_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_starred_board_ids",
+      "description": "Ids of boards the caller has starred in a workspace",
+      "operation": "query",
+      "sql": "SELECT board_id FROM starred_boards WHERE tenant_id = :tenant_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "watch_card",
+      "description": "Watch a card for the caller",
+      "operation": "execute",
+      "sql": "INSERT OR IGNORE INTO card_watchers (tenant_id, card_id, user_id, watched_at) SELECT :tenant_id, :card_id, :__user_id, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "unwatch_card",
+      "description": "Stop the caller watching a card",
+      "operation": "execute",
+      "sql": "DELETE FROM card_watchers WHERE tenant_id = :tenant_id AND card_id = :card_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "is_watching_card",
+      "description": "Whether the caller is watching a card (returns a count row)",
+      "operation": "query",
+      "sql": "SELECT COUNT(*) AS n FROM card_watchers WHERE tenant_id = :tenant_id AND card_id = :card_id AND user_id = :__user_id",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_card_watcher_ids",
+      "description": "User ids watching a card (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT user_id FROM card_watchers WHERE tenant_id = :tenant_id AND card_id = :card_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "list_custom_fields",
+      "description": "Custom field definitions on a board, in position order (caller must be a member)",
+      "operation": "query",
+      "sql": "SELECT * FROM custom_fields WHERE tenant_id = :tenant_id AND board_id = :board_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ORDER BY position",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "create_custom_field",
+      "description": "Create a custom field on a board (caller must be a member)",
+      "operation": "execute",
+      "sql": "INSERT INTO custom_fields (id, tenant_id, board_id, name, kind, options, position, created_at) SELECT :id, :tenant_id, :board_id, :name, :kind, :options, :position, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "board_id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "type": "string" },
+        "options": { "type": "string", "optional": true },
+        "position": { "type": "number" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "update_custom_field",
+      "description": "Update a custom field (caller must be a member). NULL patch params are ignored via *_set flags.",
+      "operation": "execute",
+      "sql": "UPDATE custom_fields SET name = COALESCE(:name, name), kind = COALESCE(:kind, kind), options = CASE WHEN :options_set = 1 THEN :options ELSE options END WHERE id = :field_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "field_id": { "type": "string" },
+        "name": { "type": "string", "optional": true },
+        "kind": { "type": "string", "optional": true },
+        "options": { "type": "string", "optional": true },
+        "options_set": { "type": "integer" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "delete_custom_field",
+      "description": "Delete a custom field and its stored values (caller must be a member) — atomic",
+      "operation": "batch",
+      "statements": [
+        "DELETE FROM card_field_values WHERE field_id = :field_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "DELETE FROM custom_fields WHERE id = :field_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
+      ],
+      "params": {
+        "tenant_id": { "type": "string" },
+        "field_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "clear_card_field_value",
+      "description": "Clear a custom field value for a card (caller must be a member)",
+      "operation": "execute",
+      "sql": "DELETE FROM card_field_values WHERE card_id = :card_id AND field_id = :field_id AND tenant_id = :tenant_id AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "field_id": { "type": "string" }
+      },
+      "requires_auth": true
+    },
+    {
+      "name": "set_card_field_value",
+      "description": "Set (upsert) a custom field value for a card (caller must be a member)",
+      "operation": "execute",
+      "sql": "INSERT INTO card_field_values (tenant_id, card_id, field_id, value) SELECT :tenant_id, :card_id, :field_id, :value WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id) ON CONFLICT(card_id, field_id) DO UPDATE SET value = :value",
+      "params": {
+        "tenant_id": { "type": "string" },
+        "card_id": { "type": "string" },
+        "field_id": { "type": "string" },
+        "value": { "type": "string" }
+      },
+      "requires_auth": true
+    }
+  ]
+}

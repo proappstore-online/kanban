@@ -1,6 +1,6 @@
-import { app } from '../app'
 import type { Feature } from '../../types'
 import { ensureMigrated, rid } from './core'
+import { q, x } from '../actions'
 
 interface FeatureRow {
   id: string
@@ -22,10 +22,7 @@ function rowToFeature(r: FeatureRow): Feature {
 
 export async function listFeatures(tenantId: string): Promise<Feature[]> {
   await ensureMigrated()
-  const { rows } = await app.db.query<FeatureRow>(
-    `SELECT * FROM features WHERE tenant_id = ? ORDER BY sort_order, created_at`,
-    [tenantId],
-  )
+  const rows = await q<FeatureRow>('list_features', { tenant_id: tenantId })
   return rows.map(rowToFeature)
 }
 
@@ -34,15 +31,9 @@ export async function createFeature(tenantId: string, name: string): Promise<Fea
   const id = rid()
   const now = Date.now()
   // sort_order = next available; cheap to recompute on insert.
-  const { rows: maxRows } = await app.db.query<{ n: number | null }>(
-    `SELECT MAX(sort_order) AS n FROM features WHERE tenant_id = ?`,
-    [tenantId],
-  )
+  const maxRows = await q<{ n: number | null }>('max_feature_sort_order', { tenant_id: tenantId })
   const next = (Number(maxRows[0]?.n ?? 0) || 0) + 1
-  await app.db.execute(
-    `INSERT INTO features (id, tenant_id, name, sort_order, created_at) VALUES (?,?,?,?,?)`,
-    [id, tenantId, name, next, now],
-  )
+  await x('create_feature', { id, tenant_id: tenantId, name, sort_order: next })
   return { id, tenantId, name, sortOrder: next, createdAt: now }
 }
 
@@ -52,18 +43,12 @@ export async function renameFeature(
   name: string,
 ): Promise<void> {
   await ensureMigrated()
-  await app.db.execute(
-    `UPDATE features SET name = ? WHERE id = ? AND tenant_id = ?`,
-    [name, featureId, tenantId],
-  )
+  await x('rename_feature', { tenant_id: tenantId, feature_id: featureId, name })
 }
 
 export async function deleteFeature(tenantId: string, featureId: string): Promise<void> {
   await ensureMigrated()
-  // Boards under this feature get orphaned to "Ungrouped" (feature_id NULL).
-  await app.db.execute(
-    `UPDATE boards SET feature_id = NULL WHERE feature_id = ? AND tenant_id = ?`,
-    [featureId, tenantId],
-  )
-  await app.db.execute(`DELETE FROM features WHERE id = ? AND tenant_id = ?`, [featureId, tenantId])
+  // Boards under this feature get orphaned to "Ungrouped" (feature_id NULL),
+  // then the feature is deleted — one atomic action.
+  await x('delete_feature', { tenant_id: tenantId, feature_id: featureId })
 }
