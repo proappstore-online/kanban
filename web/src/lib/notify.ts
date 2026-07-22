@@ -8,19 +8,8 @@ export function notifyUser(
   targetUserId: string,
   payload: { title: string; body: string; url?: string; tag?: string },
 ): void {
-  const token = app.auth.token
-  if (!token) return
-
-  fetch('https://api.proappstore.online/v1/notifications/notify-user', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      appId: 'kanban',
-      targetUserId,
-      ...payload,
-    }),
-  }).catch(() => {})
+  if (!app.auth.user) return
+  // Route through the SDK primitive, which uses the mode-agnostic authenticated
+  // transport (bearer or platform-cookie mediation) — no raw token in app code.
+  void app.notifications.notifyUser(targetUserId, payload).catch(() => {})
 }
