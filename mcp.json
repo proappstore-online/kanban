@@ -104,7 +104,7 @@
       "statements": [
         "UPDATE workspaces SET owner_user_id = :new_owner_user_id WHERE id = :tenant_id AND owner_user_id = :__user_id AND EXISTS (SELECT 1 FROM members tm WHERE tm.tenant_id = :tenant_id AND tm.user_id = :new_owner_user_id)",
         "UPDATE members SET role = 'admin' WHERE tenant_id = :tenant_id AND user_id = :__user_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :new_owner_user_id)",
-        "UPDATE members SET role = 'owner' WHERE tenant_id = :tenant_id AND user_id = :new_owner_user_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :new_owner_user_id)"
+        "UPDATE members SET role = 'owner' WHERE tenant_id = :tenant_id AND user_id = :new_owner_user_id AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = :tenant_id AND w.owner_user_id = :new_owner_user_id) AND EXISTS (SELECT 1 FROM members cm WHERE cm.tenant_id = :tenant_id AND cm.user_id = :__user_id)"
       ],
       "params": {
         "tenant_id": { "type": "string" },
@@ -210,7 +210,8 @@
       "params": {
         "code": { "type": "string" }
       },
-      "requires_auth": true
+      "requires_auth": true,
+      "auth": { "caller_unscoped": { "reason": "invite redemption: lookup by an unguessable single-workspace invite code (~40 random bits, 7-day expiry); the caller is not yet a member, so it cannot be member-scoped; invites rows hold no PII (tenant_id, role, creator id, timestamps)" } }
     },
     {
       "name": "get_my_membership",
@@ -271,10 +272,10 @@
       "operation": "batch",
       "statements": [
         "INSERT INTO boards (id, tenant_id, name, feature_id, archived, created_by, created_at, updated_at) SELECT :id, :tenant_id, :name, :feature_id, 0, :__user_id, :__now, :__now WHERE EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
-        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_new_id, :tenant_id, :id, :list_new_title, 1024, 0, 'new', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)",
-        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_wip_id, :tenant_id, :id, :list_wip_title, 2048, 0, 'wip', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)",
-        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_testing_id, :tenant_id, :id, :list_testing_title, 3072, 0, 'testing', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)",
-        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_launched_id, :tenant_id, :id, :list_launched_title, 4096, 0, 'launched', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id)"
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_new_id, :tenant_id, :id, :list_new_title, 1024, 0, 'new', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_wip_id, :tenant_id, :id, :list_wip_title, 2048, 0, 'wip', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_testing_id, :tenant_id, :id, :list_testing_title, 3072, 0, 'testing', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)",
+        "INSERT INTO lists (id, tenant_id, board_id, title, position, archived, kind, created_at) SELECT :list_launched_id, :tenant_id, :id, :list_launched_title, 4096, 0, 'launched', :__now WHERE EXISTS (SELECT 1 FROM boards b WHERE b.id = :id AND b.tenant_id = :tenant_id) AND EXISTS (SELECT 1 FROM members gm WHERE gm.tenant_id = :tenant_id AND gm.user_id = :__user_id)"
       ],
       "params": {
         "id": { "type": "string" },
