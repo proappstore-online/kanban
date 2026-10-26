@@ -14,12 +14,9 @@ import { expect, test } from '@playwright/test'
 
 test.describe('Sign-in', () => {
   test.beforeEach(async ({ page }) => {
-    // Block both FAS and PAS auth checks so the SDK can't claim there's
+    // Block PAS auth checks so the SDK can't claim there's
     // an existing session. Each call resolves with 401, which the SDK
     // treats as "no current user."
-    await page.route('**/api.freeappstore.online/v1/auth/**', (route) =>
-      route.fulfill({ status: 401, body: '{"error":"not signed in"}' }),
-    )
     await page.route('**/api.proappstore.online/v1/auth/**', (route) =>
       route.fulfill({ status: 401, body: '{"error":"not signed in"}' }),
     )
@@ -42,16 +39,16 @@ test.describe('Sign-in', () => {
     await page.goto('/')
 
     // Don't actually navigate to GitHub — intercept the OAuth start URL
-    // and observe the redirect intent. We accept any FAS auth path since
+    // and observe the redirect intent. We accept the PAS auth path since
     // the SDK may version it (`/v1/auth/start`, `/v1/auth/github`, etc.).
     const oauthRequest = page.waitForRequest(
-      (req) => req.url().includes('api.freeappstore.online') && req.url().includes('/auth/'),
+      (req) => req.url().includes('api.proappstore.online') && req.url().includes('/auth/'),
       { timeout: 5_000 },
     )
 
     await page.getByRole('button', { name: /sign in with github/i }).click()
 
     const req = await oauthRequest
-    expect(req.url()).toMatch(/api\.freeappstore\.online/)
+    expect(req.url()).toMatch(/api\.proappstore\.online/)
   })
 })

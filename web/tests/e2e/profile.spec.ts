@@ -7,7 +7,7 @@ test.describe('Profile page', () => {
     await signInAs(page, undefined, {
       queryResponses: [
         { match: /FROM workspaces w\s+JOIN members m/, rows: [{ ...WS, role: 'owner' }] },
-        { match: /FROM members WHERE tenant_id = \? ORDER BY/, rows: [MEMBER] },
+        { match: /FROM members WHERE tenant_id = \?.*ORDER BY/, rows: [MEMBER] },
       ],
     })
 
@@ -24,7 +24,7 @@ test.describe('Profile page', () => {
     const handle = await signInAs(page, undefined, {
       queryResponses: [
         { match: /FROM workspaces w\s+JOIN members m/, rows: [{ ...WS, role: 'owner' }] },
-        { match: /FROM members WHERE tenant_id = \? ORDER BY/, rows: [MEMBER] },
+        { match: /FROM members WHERE tenant_id = \?.*ORDER BY/, rows: [MEMBER] },
       ],
     })
 
@@ -45,7 +45,7 @@ test.describe('Profile page', () => {
     const handle = await signInAs(page, undefined, {
       queryResponses: [
         { match: /FROM workspaces w\s+JOIN members m/, rows: [{ ...WS, role: 'owner' }] },
-        { match: /FROM members WHERE tenant_id = \? ORDER BY/, rows: [MEMBER] },
+        { match: /FROM members WHERE tenant_id = \?.*ORDER BY/, rows: [MEMBER] },
       ],
     })
 
@@ -66,7 +66,7 @@ test.describe('Profile page', () => {
     await signInAs(page, undefined, {
       queryResponses: [
         { match: /FROM workspaces w\s+JOIN members m/, rows: [{ ...WS, role: 'owner' }] },
-        { match: /FROM members WHERE tenant_id = \? ORDER BY/, rows: [MEMBER] },
+        { match: /FROM members WHERE tenant_id = \?.*ORDER BY/, rows: [MEMBER] },
       ],
     })
 
@@ -112,7 +112,7 @@ test.describe('Profile page', () => {
     await signInAs(page, undefined, {
       queryResponses: [
         { match: /FROM workspaces w\s+JOIN members m/, rows: [{ ...WS, role: 'owner' }] },
-        { match: /FROM members WHERE tenant_id = \? ORDER BY/, rows: [MEMBER] },
+        { match: /FROM members WHERE tenant_id = \?.*ORDER BY/, rows: [MEMBER] },
       ],
     })
 

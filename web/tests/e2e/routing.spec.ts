@@ -3,15 +3,12 @@ import { expect, test } from '@playwright/test'
 /**
  * Route gating. The SDK's `auth.init()` must complete before any
  * authenticated route renders; if there's no session we bounce to the
- * sign-in screen. Blocking the FAS auth endpoint so the SDK resolves
+ * sign-in screen. Blocking the PAS auth endpoint so the SDK resolves
  * "no current user" mimics a fresh / logged-out visit.
  */
 
 test.describe('Route gating (unauthenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api.freeappstore.online/**', (route) =>
-      route.fulfill({ status: 401, body: '{"error":"not signed in"}' }),
-    )
     await page.route('**/api.proappstore.online/**', (route) =>
       route.fulfill({ status: 401, body: '{"error":"not signed in"}' }),
     )

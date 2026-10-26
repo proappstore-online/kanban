@@ -206,12 +206,12 @@
       "name": "find_invite_by_code",
       "description": "Look up a valid, unexpired invite by code (for redemption)",
       "operation": "query",
-      "sql": "SELECT * FROM invites WHERE code = :code AND (expires_at IS NULL OR expires_at > :__now) LIMIT 1",
+      "sql": "SELECT tenant_id FROM invites WHERE code = :code AND (expires_at IS NULL OR expires_at > :__now) LIMIT 1",
       "params": {
         "code": { "type": "string" }
       },
       "requires_auth": true,
-      "auth": { "caller_unscoped": { "reason": "invite redemption: lookup by an unguessable single-workspace invite code (~40 random bits, 7-day expiry); the caller is not yet a member, so it cannot be member-scoped; invites rows hold no PII (tenant_id, role, creator id, timestamps)" } }
+      "auth": { "caller_unscoped": { "reason": "invite redemption: lookup by an unguessable single-workspace invite code (~40 random bits, 7-day expiry); the caller is not yet a member, so it cannot be member-scoped; the response exposes only tenant_id; creator/acceptance identifiers and timestamps are not returned" } }
     },
     {
       "name": "get_my_membership",

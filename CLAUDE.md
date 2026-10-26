@@ -7,7 +7,7 @@ filters, text search, dark mode, and quick-status change.
 - Subdomain: `kanban.proappstore.online`
 - Dev: `pnpm install && pnpm dev`
 - Build: `pnpm build` _(runs platform `compliance check` first via prebuild — don't bypass with `--filter`)_
-- Deploy: `git push origin main` (auto-deploys via Cloudflare Pages)
+- Deploy: `git push origin main` (auto-deploys via the reusable PAS R2 pipeline)
 - Tests: `pnpm --filter @kanban/web test:e2e` (35 Playwright tests)
 
 For platform conventions (tech stack, brand, mobile rules, deploy flow),
@@ -33,3 +33,10 @@ https://raw.githubusercontent.com/proappstore-online/proappstore/main/SKILLS.md
 
 - **Launched column cap.** The "Launched" (done) list shows only 10
   cards by default with an expand toggle, keeping the board fast.
+
+## Marketing
+
+`marketing/` is the public product site at `about-kanban.proappstore.online`.
+Build with `pnpm build:marketing`; use `PAS_MARKETING_PREVIEW=true` for a separate noindex preview.
+`pnpm test:marketing` checks real production/preview output and bundled share assets.
+CI also preserves the existing local mocked Playwright suite. Keep workspace, member, invite and card data out of public copy.

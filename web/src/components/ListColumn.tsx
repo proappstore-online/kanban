@@ -86,7 +86,7 @@ export function ListColumn({
           ⠿
         </button>
         {editingTitle ? (
-          <input
+          <input aria-label="List title"
             autoFocus
             value={titleDraft}
             onChange={(e) => setTitleDraft(e.target.value)}
@@ -109,12 +109,12 @@ export function ListColumn({
           </button>
         )}
         <ListBadges list={list} />
-        <button
+        <button aria-label={`Delete ${list.title}`}
           onClick={() => {
             if (confirm(`Delete list "${list.title}"?`)) onDelete()
           }}
           className="shrink-0 rounded-full px-1 text-xs text-[var(--muted)] hover:text-[var(--error)]"
-          aria-label={`Delete ${list.title}`}
+
         >
           ×
         </button>
@@ -162,7 +162,7 @@ export function ListColumn({
 
       {adding ? (
         <div className="flex flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--paper)] p-2">
-          <textarea
+          <textarea aria-label="New card title"
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
@@ -177,7 +177,7 @@ export function ListColumn({
               }
             }}
             placeholder="Card title"
-            aria-label="New card title"
+
             rows={2}
             className="resize-none bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
           />

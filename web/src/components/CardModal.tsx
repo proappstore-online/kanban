@@ -159,11 +159,11 @@ export function CardModal({
         onClick={(e) => e.stopPropagation()}
         className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[var(--line)] bg-[var(--paper)] p-6 shadow-[var(--shadow-soft)] sm:max-h-[85dvh] sm:rounded-3xl"
       >
-        <input
+        <input aria-label="Card title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Title"
-          aria-label="Card title"
+
           className="w-full bg-transparent text-lg font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
         />
 
@@ -182,7 +182,7 @@ export function CardModal({
             const active = card.labels.find((l) => l.color === color)
             const s = labelStyles(color)
             return (
-              <button
+              <button aria-label={`${color} label`}
                 key={color}
                 type="button"
                 onClick={() => toggleLabel(color)}
@@ -191,7 +191,7 @@ export function CardModal({
                 }`}
                 style={{ background: s.bg, color: s.fg }}
                 aria-pressed={active != null}
-                aria-label={`${color} label`}
+
               >
                 {active?.name || (
                   <span
@@ -237,11 +237,11 @@ export function CardModal({
         )}
 
         <SectionLabel>Cover image</SectionLabel>
-        <input
+        <input aria-label="Cover image URL"
           value={coverUrl}
           onChange={(e) => setCoverUrl(e.target.value)}
           placeholder="Paste an image URL…"
-          aria-label="Cover image URL"
+
           className="mt-2 w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
         {coverUrl && (
@@ -264,7 +264,7 @@ export function CardModal({
                     <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
                       {f.name}
                       {f.kind === 'dropdown' ? (
-                        <select
+                        <select aria-label={f.name}
                           value={current}
                           onChange={(e) => onFieldChange?.(f.id, e.target.value || null)}
                           className="mt-1 block w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none"
@@ -275,7 +275,7 @@ export function CardModal({
                           ))}
                         </select>
                       ) : (
-                        <input
+                        <input aria-label={f.name}
                           type={f.kind === 'number' ? 'number' : 'text'}
                           defaultValue={current}
                           onBlur={(e) => {
@@ -298,7 +298,7 @@ export function CardModal({
         {onToggleWatch && (
           <>
             <SectionLabel>Notifications</SectionLabel>
-            <button
+            <button aria-label={watching ? 'Watching — you get notified on all changes' : 'Watch this card'}
               onClick={onToggleWatch}
               className={`mt-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
                 watching
@@ -344,10 +344,10 @@ export function CardModal({
                   >
                     {item.text}
                   </span>
-                  <button
+                  <button aria-label="Remove item"
                     type="button"
                     onClick={() => removeChecklistItem(item.id)}
-                    aria-label="Remove item"
+
                     className="rounded-full px-1.5 text-base leading-none text-[var(--muted)] opacity-40 hover:bg-[var(--paper-deep)] hover:text-[var(--error)] hover:opacity-100"
                   >
                     ×
@@ -358,7 +358,7 @@ export function CardModal({
           </>
         )}
         <div className="mt-2 flex gap-2">
-          <input
+          <input aria-label="New checklist item"
             value={newItem}
             onChange={(e) => setNewItem(e.target.value)}
             onKeyDown={(e) => {
@@ -368,7 +368,7 @@ export function CardModal({
               }
             }}
             placeholder="Add an item…"
-            aria-label="New checklist item"
+
             className="flex-1 rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none focus:border-[var(--line-strong)]"
           />
           <button
@@ -382,31 +382,31 @@ export function CardModal({
         </div>
 
         <SectionLabel>Description</SectionLabel>
-        <textarea
+        <textarea aria-label="Card description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Add a more detailed description…"
-          aria-label="Card description"
+
           rows={4}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
 
         <SectionLabel>Requirement</SectionLabel>
-        <textarea
+        <textarea aria-label="Card requirement"
           value={requirement}
           onChange={(e) => setRequirement(e.target.value)}
           placeholder="What needs to be done? What's the user-visible outcome?"
-          aria-label="Card requirement"
+
           rows={3}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
 
         <SectionLabel>Acceptance criteria</SectionLabel>
-        <textarea
+        <textarea aria-label="Card acceptance criteria"
           value={acceptanceCriteria}
           onChange={(e) => setAcceptanceCriteria(e.target.value)}
           placeholder="How do we know this is done? Bullet the checks."
-          aria-label="Card acceptance criteria"
+
           rows={3}
           className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
@@ -427,17 +427,17 @@ export function CardModal({
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <button title="Move to Archived — reversible, keeps history"
               onClick={() => {
                 onClose()
                 onArchive()
               }}
               className="rounded-full border border-[var(--line-strong)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
-              title="Move to Archived — reversible, keeps history"
+
             >
               Archive
             </button>
-            <button
+            <button title="Hard delete — comments + history removed"
               onClick={() => {
                 if (
                   confirm(
@@ -448,7 +448,7 @@ export function CardModal({
                 }
               }}
               className="rounded-full px-3 py-1.5 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
-              title="Hard delete — comments + history removed"
+
             >
               Delete forever
             </button>
@@ -502,7 +502,7 @@ function LabelNameInput({
   }
 
   return (
-    <input
+    <input aria-label={`Rename ${label.color} label`}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -514,7 +514,7 @@ function LabelNameInput({
         }
       }}
       placeholder={`Name this ${label.color} label`}
-      aria-label={`Rename ${label.color} label`}
+
       className="rounded-full border border-[var(--line)] px-3 py-1 text-[11px] outline-none focus:border-[var(--line-strong)]"
       style={{ background: s.bg + '40', color: s.fg }}
       maxLength={28}
@@ -568,14 +568,14 @@ function DateField({
         {label} <span className="opacity-60">— {sub}</span>
       </span>
       <div className="flex items-center gap-2">
-        <input
+        <input aria-label={`${label} — ${sub}`}
           type="datetime-local"
           value={value !== undefined ? toLocalInput(value) : ''}
           onChange={(e) => {
             const v = e.target.value
             onChange(v ? new Date(v).getTime() : undefined)
           }}
-          aria-label={`${label} — ${sub}`}
+
           className="min-w-0 flex-1 bg-transparent text-xs text-[var(--ink)] outline-none"
         />
         {value !== undefined && (

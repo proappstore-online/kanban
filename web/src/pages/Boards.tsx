@@ -277,10 +277,10 @@ function FeatureSection({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="font-semibold text-[var(--ink)]">{b.name}</div>
-              <button
+              <button aria-label={starred.has(b.id) ? 'Unstar board' : 'Star board'}
                 onClick={(e) => { e.stopPropagation(); onToggleStar(b.id) }}
                 className="shrink-0 text-base"
-                aria-label={starred.has(b.id) ? 'Unstar board' : 'Star board'}
+
                 title={starred.has(b.id) ? 'Unstar' : 'Star'}
               >
                 {starred.has(b.id) ? '★' : '☆'}
@@ -290,7 +290,7 @@ function FeatureSection({
               Updated {new Date(b.updatedAt).toLocaleDateString()}
             </div>
             <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100">
-              <select
+              <select aria-label={`Feature for ${b.name}`} title="Move to feature"
                 value={b.featureId ?? ''}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => {
@@ -298,7 +298,7 @@ function FeatureSection({
                   onMoveToFeature(b.id, e.target.value || null)
                 }}
                 className="rounded-full bg-[var(--paper)] px-2 py-0.5 text-[10px] text-[var(--muted)]"
-                title="Move to feature"
+
               >
                 <option value="">Ungrouped</option>
                 {features.map((f) => (
@@ -307,13 +307,13 @@ function FeatureSection({
                   </option>
                 ))}
               </select>
-              <button
+              <button aria-label={`Delete ${b.name}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   onDelete(b.id, b.name)
                 }}
                 className="rounded-full bg-[var(--paper)] px-2 py-0.5 text-xs text-[var(--muted)] hover:text-[var(--error)]"
-                aria-label={`Delete ${b.name}`}
+
               >
                 Delete
               </button>
@@ -323,7 +323,7 @@ function FeatureSection({
 
         {isCreating ? (
           <div className="flex h-32 flex-col rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--glass)] p-4">
-            <input
+            <input aria-label="New board name"
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -332,11 +332,11 @@ function FeatureSection({
                 if (e.key === 'Escape') onCancelCreate()
               }}
               placeholder="Board name"
-              aria-label="New board name"
+
               className="bg-transparent text-base font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
             />
             <div className="mt-auto flex gap-2">
-              <button
+              <button aria-label={busy ? 'Creating…' : 'Create'}
                 onClick={onCommitCreate}
                 disabled={!newName.trim() || busy}
                 className="rounded-full bg-[var(--ink)] px-3 py-1 text-xs font-semibold text-[var(--paper)] disabled:opacity-40"

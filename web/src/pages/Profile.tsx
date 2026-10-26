@@ -263,10 +263,10 @@ export function Profile({ user, workspaces }: ProfileProps) {
               { key: 'default' as TextSize, label: 'A', title: 'Default' },
               { key: 'lg' as TextSize, label: 'A+', title: 'Large' },
             ]).map(({ key, label, title }) => (
-              <button
+              <button title={title}
                 key={key}
                 onClick={() => { setTextSize(key); applyTextSize(key) }}
-                title={title}
+
                 className={`rounded-full border px-4 py-1.5 text-xs ${
                   textSize === key
                     ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] font-semibold'

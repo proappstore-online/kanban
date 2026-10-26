@@ -52,12 +52,12 @@ export function BoardFilters({
   return (
     <div className="border-b border-[var(--line)] bg-[var(--glass)]/40 px-2 py-2 sm:px-6">
       <div className="mx-auto flex max-w-[1540px] flex-wrap items-center gap-2 text-xs">
-        <input
+        <input aria-label="Search cards"
           type="text"
           value={value.text}
           onChange={(e) => onChange({ ...value, text: e.target.value })}
           placeholder="Search cards…"
-          aria-label="Search cards"
+
           className="w-28 min-w-0 rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1 text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:w-40 focus:border-[var(--line-strong)] transition-[width] sm:w-36 sm:focus:w-48"
         />
         <AssigneePicker
@@ -191,7 +191,7 @@ function Row({
 }) {
   return (
     <li>
-      <button
+      <button aria-label={label}
         onClick={onClick}
         className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--paper-deep)] ${
           active ? 'text-[var(--ink)] font-semibold' : 'text-[var(--muted)]'

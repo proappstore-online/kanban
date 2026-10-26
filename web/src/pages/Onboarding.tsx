@@ -35,7 +35,7 @@ export function Onboarding({ user, onCreated }: OnboardingProps) {
           Workspaces are how Kanban Pro groups your team. Create one to get started — you'll be
           able to invite teammates next.
         </p>
-        <input
+        <input aria-label="Workspace name"
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -43,10 +43,10 @@ export function Onboarding({ user, onCreated }: OnboardingProps) {
             if (e.key === 'Enter') handleCreate()
           }}
           placeholder="e.g. Acme Marketing"
-          aria-label="Workspace name"
+
           className="mt-6 w-full rounded-2xl border border-[var(--line)] bg-[var(--paper-deep)] px-4 py-3 text-center text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
-        <button
+        <button aria-label={busy ? 'Creating…' : 'Create workspace'}
           onClick={handleCreate}
           disabled={!name.trim() || busy}
           className="mt-4 w-full rounded-2xl bg-[var(--ink)] py-3 text-sm font-semibold text-[var(--paper)] hover:opacity-90 disabled:opacity-40"

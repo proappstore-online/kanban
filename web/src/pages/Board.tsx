@@ -709,7 +709,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
         left={<BackButton onClick={onBack} />}
         center={
           renamingBoard ? (
-            <input
+            <input aria-label="Board name"
               autoFocus
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
@@ -751,26 +751,26 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
               current={board.background}
               onChange={handleSetBackground}
             />
-            <button
+            <button title="Archived cards"
               onClick={() => setShowArchived((v) => !v)}
               className={`hidden rounded-full border px-3 py-1 text-xs sm:inline-block ${
                 showArchived
                   ? 'border-[var(--accent)] text-[var(--ink)]'
                   : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
               }`}
-              title="Archived cards"
+
               aria-pressed={showArchived}
             >
               Archived
             </button>
-            <button
+            <button title="Activity"
               onClick={() => setShowActivity((v) => !v)}
               className={`flex items-center justify-center rounded-full border px-2 py-1 text-xs sm:px-3 ${
                 showActivity
                   ? 'border-[var(--accent)] text-[var(--ink)]'
                   : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
               }`}
-              title="Activity"
+
               aria-label="Activity"
               aria-pressed={showActivity}
             >
@@ -833,7 +833,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
 
           {addingList ? (
             <div className="hidden w-72 shrink-0 flex-col gap-2 rounded-2xl bg-[var(--glass)] p-3 sm:flex">
-              <input
+              <input aria-label="New list title"
                 autoFocus
                 value={newListTitle}
                 onChange={(e) => setNewListTitle(e.target.value)}
@@ -845,7 +845,7 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
                   }
                 }}
                 placeholder="List title"
-                aria-label="New list title"
+
                 className="bg-transparent text-sm font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
               />
               <div className="flex gap-2">
@@ -874,9 +874,9 @@ export function Board({ boardId, user, workspace, onBack, initialCardId }: Board
               + Add a list
             </button>
           ) : (
-            <button
+            <button aria-label="Add a list"
               onClick={() => setAddingList(true)}
-              aria-label="Add a list"
+
               title="Add a list"
               className="hidden size-10 shrink-0 items-center justify-center rounded-full border border-[var(--line-strong)] text-lg text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)] self-start mt-3 sm:flex"
             >
@@ -1029,14 +1029,14 @@ function FieldsManager({
 
   return (
     <div ref={ref} className="relative hidden sm:block">
-      <button
+      <button title="Custom fields"
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center justify-center rounded-full border px-2 py-1 text-xs sm:px-3 ${
           open
             ? 'border-[var(--accent)] text-[var(--ink)]'
             : 'border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--ink)]'
         }`}
-        title="Custom fields"
+
         aria-label="Custom fields"
       >
         <span className="hidden sm:inline">Fields{fields.length > 0 ? ` (${fields.length})` : ''}</span>
@@ -1052,7 +1052,7 @@ function FieldsManager({
                     <span className="text-xs text-[var(--ink)]">{f.name}</span>
                     <span className="ml-1 text-[10px] text-[var(--muted)]">({f.kind})</span>
                   </div>
-                  <button
+                  <button aria-label={`Delete field ${f.name}`}
                     onClick={() => onDelete(f.id)}
                     className="text-[10px] text-[var(--muted)] hover:text-[var(--error)]"
                   >
@@ -1064,7 +1064,7 @@ function FieldsManager({
           )}
           {adding ? (
             <div className="mt-2 space-y-2">
-              <input
+              <input aria-label="Field name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') commitAdd() }}
@@ -1072,7 +1072,7 @@ function FieldsManager({
                 autoFocus
                 className="w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)] outline-none"
               />
-              <select
+              <select aria-label="Field type"
                 value={newKind}
                 onChange={(e) => setNewKind(e.target.value as 'text' | 'number' | 'dropdown')}
                 className="w-full rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-3 py-1.5 text-xs text-[var(--ink)]"
@@ -1082,7 +1082,7 @@ function FieldsManager({
                 <option value="dropdown">Dropdown</option>
               </select>
               {newKind === 'dropdown' && (
-                <input
+                <input aria-label="Dropdown options"
                   value={newOptions}
                   onChange={(e) => setNewOptions(e.target.value)}
                   placeholder="Options (pipe-separated: Low|Med|High)"
@@ -1148,10 +1148,10 @@ function BackgroundPicker({
 
   return (
     <div ref={ref} className="relative hidden sm:block">
-      <button
+      <button title="Board background"
         onClick={() => setOpen((v) => !v)}
         className="flex size-7 items-center justify-center rounded-full border border-[var(--line-strong)] text-xs text-[var(--muted)] hover:text-[var(--ink)]"
-        title="Board background"
+
         aria-label="Board background"
       >
         <span
@@ -1162,23 +1162,23 @@ function BackgroundPicker({
       {open && (
         <div className="absolute right-0 top-full z-40 mt-2 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 shadow-[var(--shadow-soft)]">
           <div className="grid grid-cols-4 gap-2">
-            <button
+            <button title="None"
               onClick={() => { onChange(null); setOpen(false) }}
               className={`flex size-8 items-center justify-center rounded-full border-2 transition-transform hover:scale-110 ${
                 !current ? 'border-[var(--ink)]' : 'border-transparent'
               }`}
-              title="None"
+
             >
               <span className="size-6 rounded-full border border-[var(--line)] bg-[var(--paper)]" />
             </button>
             {keys.map((key) => (
-              <button
+              <button title={key.charAt(0).toUpperCase() + key.slice(1)}
                 key={key}
                 onClick={() => { onChange(key); setOpen(false) }}
                 className={`flex size-8 items-center justify-center rounded-full border-2 transition-transform hover:scale-110 ${
                   current === key ? 'border-[var(--ink)]' : 'border-transparent'
                 }`}
-                title={key.charAt(0).toUpperCase() + key.slice(1)}
+
               >
                 <span
                   className="size-6 rounded-full border border-[var(--line)]"

@@ -168,7 +168,7 @@ export function CommentsSection({
       </ul>
 
       <div className="relative mt-3">
-        <textarea
+        <textarea aria-label="New comment"
           ref={textareaRef}
           value={draft}
           onChange={(e) =>
@@ -182,7 +182,7 @@ export function CommentsSection({
           }
           onKeyDown={onKeyDown}
           placeholder="Write a comment… type @ to mention. ⌘+Enter to post."
-          aria-label="New comment"
+
           rows={3}
           className="w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--paper-deep)] p-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--line-strong)]"
         />
@@ -209,7 +209,7 @@ export function CommentsSection({
         )}
       </div>
       <div className="mt-2 flex justify-end">
-        <button
+        <button aria-label={busy ? 'Posting…' : 'Comment'}
           type="button"
           onClick={post}
           disabled={!draft.trim() || busy}

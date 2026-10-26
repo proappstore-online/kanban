@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { signInAs } from './_fixtures/auth'
 
 /**
  * Verifies that the invite hash is preserved across the sign-in flow.
@@ -14,10 +15,10 @@ import { expect, test } from '@playwright/test'
 test.describe('Invite link preservation across sign-in', () => {
   test('sign-in button saves invite hash to sessionStorage', async ({ page }) => {
     // Don't stub auth — user is signed out so SignIn renders.
-    await page.route('**/api.freeappstore.online/v1/auth/me', (route) =>
+    await page.route('**/api.proappstore.online/v1/auth/me', (route) =>
       route.fulfill({ status: 401, body: '{}' }),
     )
-    await page.route('**/api.freeappstore.online/**', (route) => {
+    await page.route('**/api.proappstore.online/**', (route) => {
       if (route.request().url().includes('/v1/auth/me')) return route.fallback()
       return route.fulfill({ status: 200, body: '{}' })
     })
@@ -30,16 +31,11 @@ test.describe('Invite link preservation across sign-in', () => {
       timeout: 10_000,
     })
 
-    // Instead of clicking (which would navigate away), verify the handleSignIn
-    // function exists by evaluating it directly. We'll verify the sessionStorage
-    // write happens by injecting a spy.
-    await page.evaluate(() => {
-      // Simulate what handleSignIn does: save hash to sessionStorage.
-      // We can't actually click (it navigates away), so we test the logic.
-      if (location.hash && location.hash !== '#') {
-        sessionStorage.setItem('kanban:returnHash', location.hash)
-      }
-    })
+    // Exercise the real click. A 204 intercept cancels navigation while preserving the local document.
+    await page.route('**/api.proappstore.online/v1/auth/github/start*', (route) => route.fulfill({ status: 204 }))
+    const started = page.waitForRequest((request) => request.url().includes('/v1/auth/github/start'))
+    await page.getByRole('button', { name: /sign in with github/i }).click()
+    await started
 
     const saved = await page.evaluate(() =>
       sessionStorage.getItem('kanban:returnHash'),
@@ -54,37 +50,7 @@ test.describe('Invite link preservation across sign-in', () => {
       window.sessionStorage.setItem('kanban:returnHash', '#/invite/restored-code');
     `)
 
-    // Stub auth as signed-in
-    const session = {
-      token: 'fake-token',
-      user: { id: 'gh:999000', login: 'test-user', avatarUrl: null, dateOfBirth: null },
-      obtainedAt: Date.now(),
-    }
-    await page.addInitScript(`
-      window.localStorage.setItem('fas:session', ${JSON.stringify(JSON.stringify(session))});
-    `)
-    await page.route('**/api.freeappstore.online/v1/auth/me', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(session.user),
-      }),
-    )
-    await page.route('**/api.freeappstore.online/**', (route) => {
-      if (route.request().url().includes('/v1/auth/me')) return route.fallback()
-      return route.fulfill({ status: 200, body: '{}' })
-    })
-    // Stub data worker
-    await page.route('**/data-kanban.proappstore.online/**', (route) => {
-      const url = new URL(route.request().url())
-      if (url.pathname.endsWith('/migrate'))
-        return route.fulfill({ status: 200, contentType: 'application/json', body: '{"applied":[]}' })
-      if (url.pathname.endsWith('/query'))
-        return route.fulfill({ status: 200, contentType: 'application/json', body: '{"rows":[]}' })
-      if (url.pathname.endsWith('/execute'))
-        return route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' })
-      return route.fulfill({ status: 200, body: '{}' })
-    })
+    await signInAs(page)
 
     // Go to root (simulating OAuth return — hash was cleared by SDK)
     await page.goto('/')

@@ -273,11 +273,11 @@ function StatusBadge({
 
   return (
     <span ref={wrapRef} className="relative inline-block">
-      <button
+      <button title={`${STATUS_LABEL[kind]} — click to change`}
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex size-5 items-center justify-center rounded-full hover:bg-[var(--paper-deep)]"
-        title={`${STATUS_LABEL[kind]} — click to change`}
+
         aria-haspopup="menu"
         aria-expanded={open}
       >

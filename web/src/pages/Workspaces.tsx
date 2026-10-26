@@ -55,7 +55,7 @@ export function Workspaces({ user, workspaces, onOpen, onCreated }: WorkspacesPr
 
           {creating ? (
             <div className="flex h-32 flex-col rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--glass)] p-4">
-              <input
+              <input aria-label="New workspace name"
                 autoFocus
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -67,11 +67,11 @@ export function Workspaces({ user, workspaces, onOpen, onCreated }: WorkspacesPr
                   }
                 }}
                 placeholder="Workspace name"
-                aria-label="New workspace name"
+
                 className="bg-transparent text-base font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
               />
               <div className="mt-auto flex gap-2">
-                <button
+                <button aria-label={busy ? 'Creating…' : 'Create'}
                   onClick={handleCreate}
                   disabled={!newName.trim() || busy}
                   className="rounded-full bg-[var(--ink)] px-3 py-1 text-xs font-semibold text-[var(--paper)] disabled:opacity-40"

@@ -98,7 +98,7 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  const rows = await q<InviteRow>('find_invite_by_code', { code })
+  const rows = await q<Pick<InviteRow, 'tenant_id'>>('find_invite_by_code', { code })
   const invite = rows[0]
   if (!invite) return null
 

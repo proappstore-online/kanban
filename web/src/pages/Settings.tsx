@@ -273,10 +273,10 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
                   </div>
                   {canManage && m.userId !== workspace.ownerUserId ? (
                     <>
-                      <select
+                      <select aria-label={`Role for ${m.displayName}`}
                         value={m.role}
                         onChange={(e) => handleRoleChange(m.id, e.target.value as Role)}
-                        aria-label={`Role for ${m.displayName}`}
+
                         className="rounded-full border border-[var(--line)] bg-[var(--paper-deep)] px-2 py-1 text-xs text-[var(--ink)]"
                       >
                         {ROLES.map((r) => (
@@ -286,10 +286,10 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
                         ))}
                       </select>
                       {isOwner && m.userId !== user.id && (
-                        <button
+                        <button title="Transfer ownership to this member"
                           onClick={() => handleTransfer(m)}
                           className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
-                          title="Transfer ownership to this member"
+
                         >
                           Make owner
                         </button>
@@ -316,7 +316,7 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
           <SectionHeader
             right={
               canManage && (
-                <button
+                <button aria-label={busy ? 'Creating…' : 'New invite link'}
                   onClick={handleNewInvite}
                   disabled={busy}
                   className="rounded-full bg-[var(--ink)] px-4 py-1.5 text-xs font-semibold text-[var(--paper)] disabled:opacity-40"
@@ -410,14 +410,14 @@ export function Settings({ user, workspace, onBack, onLeft, onWorkspaceChanged }
               ))}
               {canManage && (
                 <li className="flex items-center gap-3 rounded-2xl border border-dashed border-[var(--line-strong)] bg-[var(--glass)] px-4 py-3">
-                  <input
+                  <input aria-label="New feature name"
                     value={newFeatureName}
                     onChange={(e) => setNewFeatureName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleAddFeature()
                     }}
                     placeholder="New feature name (e.g. Premium apps)"
-                    aria-label="New feature name"
+
                     className="min-w-0 flex-1 bg-transparent text-xs text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
                   />
                   <button

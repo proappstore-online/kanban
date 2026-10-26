@@ -1,12 +1,15 @@
 import type { Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+
+const manifest = JSON.parse(readFileSync(new URL('../../../../mcp.json', import.meta.url), 'utf8')) as { tools: { name: string; operation: string; sql?: string; statements?: (string | { sql: string })[] }[] }
 
 /**
  * Test fixtures for stubbing the SDK's auth + data layer so e2e tests
  * can exercise the React shell without a real GitHub OAuth roundtrip or
  * a live D1 backend.
  *
- * Auth model (from `@freeappstore/sdk` Auth class):
- *  - Session lives in `localStorage['fas:session']` as
+ * Auth model (from `@proappstore/sdk` Auth class):
+ *  - Session lives in `localStorage['pas:session']` as
  *    `{token, user, obtainedAt}`.
  *  - `auth.init()` reads it, then validates by hitting `/v1/auth/me`.
  *  - If that 401s, the session is cleared and the user is logged out.
@@ -31,7 +34,7 @@ export const FAKE_USER = {
 
 const FAKE_TOKEN = 'fake-test-session-token'
 
-const STORAGE_KEY = 'fas:session'
+const STORAGE_KEY = 'pas:session'
 
 export interface RecordedCall {
   sql: string
@@ -88,7 +91,7 @@ export async function signInAs(
 
   // /v1/auth/me — return the user so auth.init() resolves with a
   // session instead of clearing it.
-  await page.route('**/api.freeappstore.online/v1/auth/me', (route) =>
+  await page.route('**/api.proappstore.online/v1/auth/me', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -96,65 +99,46 @@ export async function signInAs(
     }),
   )
 
-  // Stub everything else on the FAS API as 200/{} so the SDK doesn't
+  // Stub everything else on the PAS API as 200/{} so the SDK doesn't
   // throw on background calls (usage telemetry, etc.).
-  await page.route('**/api.freeappstore.online/**', (route) => {
+  await page.route('**/api.proappstore.online/**', (route) => {
     if (route.request().url().includes('/v1/auth/me')) return route.fallback()
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   })
 
-  // Data worker: migrate, query, execute. Every query + execute is
-  // recorded into `handle` so tests can assert mutations after the fact.
-  await page.route('**/data-kanban.proappstore.online/**', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/migrate')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ applied: [] }),
-      })
-    }
-    if (url.pathname.endsWith('/query')) {
-      let body: { sql?: string; params?: unknown[] } = {}
-      try {
-        body = (await route.request().postDataJSON()) as typeof body
-      } catch {
-        /* ignore */
-      }
-      const sql = body.sql ?? ''
-      handle.queries.push({ sql, params: body.params ?? [] })
+  // Current app reads/writes are registered actions. Translate the checked-in
+  // manifest into SQL records so existing data matchers and assertions remain useful;
+  // this is a local UI mock, not a claim to execute server authorization.
+  await page.route('**/api.proappstore.online/v1/apps/kanban/actions/*', async (route) => {
+    const name = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!)
+    const action = manifest.tools.find((tool) => tool.name === name)
+    if (!action) return route.fulfill({ status: 501, body: JSON.stringify({ error: `Unknown action ${name}` }) })
+    const body = route.request().postDataJSON() as { params?: Record<string, unknown> }
+    const params = { ...body.params, __user_id: resolved.id, __now: Date.now(), __uuid: crypto.randomUUID() } as Record<string, unknown>
+    const statements = action.sql ? [action.sql] : (action.statements ?? []).map((statement) => typeof statement === 'string' ? statement : statement.sql)
+    const records = statements.map((sql) => {
+      const values: unknown[] = []
+      const normalized = sql.replace(/:([a-z_][a-z0-9_]*)/gi, (_match, key: string) => { values.push(params[key]); return '?' }).replace(/\s+/g, ' ')
+      return { sql: normalized, params: values }
+    })
+    if (action.operation === 'query') {
+      handle.queries.push(...records)
       for (const { match, rows } of queryResponses) {
-        if (match.test(sql)) {
-          return route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({ rows }),
-          })
-        }
+        if (records.some((record) => match.test(record.sql))) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows }) })
       }
-      // Default: empty result set — every list-* query returns [].
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ rows: [] }),
-      })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"rows":[]}' })
     }
-    if (url.pathname.endsWith('/execute')) {
-      let body: { sql?: string; params?: unknown[] } = {}
-      try {
-        body = (await route.request().postDataJSON()) as typeof body
-      } catch {
-        /* ignore */
-      }
-      handle.executes.push({ sql: body.sql ?? '', params: body.params ?? [] })
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, meta: {} }),
-      })
-    }
-    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    handle.executes.push(...records)
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"meta":{"changes":1}}' })
   })
+
+  // Only schema bootstrap uses the data-worker endpoint. Unexpected raw SQL must
+  // fail locally instead of accidentally making a live request or hiding drift.
+  await page.route('**/data-kanban.proappstore.online/**', (route) => route.fulfill({
+    status: new URL(route.request().url()).pathname.endsWith('/migrate') ? 200 : 501,
+    contentType: 'application/json',
+    body: new URL(route.request().url()).pathname.endsWith('/migrate') ? '{"applied":[]}' : '{"error":"Use registered actions"}',
+  }))
 
   return handle
 }

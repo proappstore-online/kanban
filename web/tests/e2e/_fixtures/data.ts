@@ -76,7 +76,7 @@ export function boardQueries(opts: {
     { match: /FROM card_assignees/, rows: [] },
     { match: /FROM checklist_items/, rows: [] },
     { match: /FROM comments/, rows: [] },
-    { match: /FROM members WHERE tenant_id = \? ORDER BY/, rows: opts.members ?? [MEMBER] },
+    { match: /FROM members WHERE tenant_id = \?.*ORDER BY/, rows: opts.members ?? [MEMBER] },
     { match: /FROM features WHERE tenant_id/, rows: [] },
     { match: /FROM mentions/, rows: [{ n: 0 }] },
   ]

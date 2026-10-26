@@ -4,23 +4,14 @@ import { WS } from './_fixtures/data'
 
 const INVITE_CODE = 'abc123test'
 
-const VALID_INVITE = {
-  id: 'inv-1',
-  tenant_id: WS.id,
-  code: INVITE_CODE,
-  role: 'member',
-  created_by: 'gh:999000',
-  expires_at: Date.now() + 7 * 24 * 60 * 60 * 1000,
-  accepted_at: null,
-  accepted_by: null,
-  created_at: 1_700_000_000_000,
-}
+// Redemption only receives the workspace ID, never creator/recipient fields.
+const VALID_INVITE = { tenant_id: WS.id }
 
 test.describe('Invite link redemption', () => {
   test('valid invite adds user as member and navigates to workspace', async ({ page }) => {
     const handle = await signInAs(page, undefined, {
       queryResponses: [
-        { match: /FROM invites\s+WHERE code = \?/, rows: [VALID_INVITE] },
+        { match: /SELECT tenant_id FROM invites\s+WHERE code = \?/, rows: [VALID_INVITE] },
         { match: /FROM members WHERE tenant_id = \? AND user_id = \?/, rows: [] },
         { match: /FROM boards WHERE tenant_id = \? AND archived = 0/, rows: [] },
         { match: /FROM workspaces WHERE id = \?/, rows: [WS] },
@@ -40,7 +31,7 @@ test.describe('Invite link redemption', () => {
   test('already-a-member user skips INSERT and still joins', async ({ page }) => {
     const handle = await signInAs(page, undefined, {
       queryResponses: [
-        { match: /FROM invites\s+WHERE code = \?/, rows: [VALID_INVITE] },
+        { match: /SELECT tenant_id FROM invites\s+WHERE code = \?/, rows: [VALID_INVITE] },
         { match: /FROM members WHERE tenant_id = \? AND user_id = \?/, rows: [{ id: 'member-1' }] },
         { match: /FROM workspaces WHERE id = \?/, rows: [WS] },
         { match: /FROM workspaces w\s+JOIN members m/, rows: [{ ...WS, role: 'member' }] },
@@ -58,7 +49,7 @@ test.describe('Invite link redemption', () => {
   test('expired invite shows "Invite invalid"', async ({ page }) => {
     await signInAs(page, undefined, {
       queryResponses: [
-        { match: /FROM invites\s+WHERE code = \?/, rows: [] },
+        { match: /SELECT tenant_id FROM invites\s+WHERE code = \?/, rows: [] },
       ],
     })
 
@@ -71,7 +62,7 @@ test.describe('Invite link redemption', () => {
   test('unknown code shows "Invite invalid"', async ({ page }) => {
     await signInAs(page, undefined, {
       queryResponses: [
-        { match: /FROM invites\s+WHERE code = \?/, rows: [] },
+        { match: /SELECT tenant_id FROM invites\s+WHERE code = \?/, rows: [] },
       ],
     })
 

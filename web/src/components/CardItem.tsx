@@ -268,7 +268,7 @@ function StatusPill({
 
   return (
     <span ref={wrapRef} className="relative inline-block">
-      <button
+      <button title={`Status: ${STATUS_LABEL[kind]} (click to change)`}
         type="button"
         onClick={(e) => {
           // The card itself has an onClick that opens the modal — stop
@@ -284,7 +284,7 @@ function StatusPill({
         style={style}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={`Status: ${STATUS_LABEL[kind]} (click to change)`}
+
       >
         {STATUS_LABEL[kind]}
         <span aria-hidden className="text-[7px]">
