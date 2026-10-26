@@ -9,9 +9,10 @@ const VALID_INVITE = { tenant_id: WS.id }
 
 test.describe('Invite link redemption', () => {
   test('valid invite adds user as member and navigates to workspace', async ({ page }) => {
+    let lookups = 0
     const handle = await signInAs(page, undefined, {
       queryResponses: [
-        { match: /SELECT tenant_id FROM invites\s+WHERE code = \?/, rows: [VALID_INVITE] },
+        { match: /SELECT tenant_id FROM invites\s+WHERE code = \?/, rows: () => ++lookups === 1 ? [] : [VALID_INVITE] },
         { match: /FROM members WHERE tenant_id = \? AND user_id = \?/, rows: [] },
         { match: /FROM boards WHERE tenant_id = \? AND archived = 0/, rows: [] },
         { match: /FROM workspaces WHERE id = \?/, rows: [WS] },

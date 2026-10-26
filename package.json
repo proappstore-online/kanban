@@ -23,6 +23,7 @@
     "typecheck": "pnpm --filter @kanban/web exec tsc -b",
     "dev:marketing": "pnpm --filter @kanban/marketing dev",
     "build:marketing": "pnpm --filter @kanban/marketing build",
-    "test:marketing": "node --test tests/marketing-build.test.mjs"
+    "test:marketing": "node --test tests/marketing-build.test.mjs",
+    "test:actions": "node --test tests/invite-actions.test.mjs"
   }
 }

@@ -98,23 +98,23 @@ export async function redeemInvite(code: string): Promise<Workspace | null> {
   await ensureMigrated()
   const me = app.auth.user
   if (!me) throw new Error('Sign in required.')
-  const rows = await q<Pick<InviteRow, 'tenant_id'>>('find_invite_by_code', { code })
-  const invite = rows[0]
-  if (!invite) return null
-
-  const existingMembers = await q<{ id: string }>('get_my_membership', {
-    tenant_id: invite.tenant_id,
-  })
-  if (existingMembers.length === 0) {
-    // The action derives the role from the server-side invite row (never the
-    // client) and is a no-op if the caller is somehow already a member.
+  // Read access is membership-scoped. A newcomer first redeems the code using
+  // the server's expiry/role/idempotency checks, then reads their own membership.
+  let rows = await q<Pick<InviteRow, 'tenant_id'>>('find_invite_by_code', { code })
+  const joined = rows.length === 0
+  if (joined) {
     await x('redeem_invite', {
       id: rid(),
       code,
       display_name: me.login ?? 'New member',
       avatar_url: me.avatarUrl ?? null,
     })
+    rows = await q<Pick<InviteRow, 'tenant_id'>>('find_invite_by_code', { code })
+  }
+  const invite = rows[0]
+  if (!invite) return null
 
+  if (joined) {
     // Notify existing members via activity feed on all boards
     const boardIds = await q<{ id: string }>('list_active_board_ids', {
       tenant_id: invite.tenant_id,

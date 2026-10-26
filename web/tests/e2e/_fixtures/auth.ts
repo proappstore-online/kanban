@@ -14,12 +14,10 @@ const manifest = JSON.parse(readFileSync(new URL('../../../../mcp.json', import.
  *  - `auth.init()` reads it, then validates by hitting `/v1/auth/me`.
  *  - If that 401s, the session is cleared and the user is logged out.
  *
- * Data worker model (per-app, currently `data-<appId>.proappstore.online`):
- *  - POST /migrate → run schema migrations (idempotent server-side)
- *  - POST /query   → SELECT, returns `{ rows: T[] }`
- *  - POST /execute → INSERT/UPDATE/DELETE, returns `{ ... }`
- *
- * Stubs here intercept all four endpoints. Tests can override individual
+ * Data model: registered PAS actions use the checked-in manifest. Responses
+ * are local UI mocks; SQL records support assertions but are not executed here.
+ * Only migration bootstrap uses data-<appId>; unexpected raw SQL fails locally.
+ * Tests can override individual
  * query responses by chaining a more specific `page.route()` AFTER
  * calling `signInAs(...)` — Playwright resolves the most-recently-added
  * route first.
@@ -44,7 +42,7 @@ export interface RecordedCall {
 /**
  * Handle returned from `signInAs`. Tests assert mutations by inspecting
  * `queries` (SELECTs) and `executes` (INSERT/UPDATE/DELETE) — every call
- * the SDK makes to the data worker is recorded here in order.
+ * the SDK makes through registered actions is recorded here in order.
  *
  * Use `executes.some(e => /INSERT INTO cards/.test(e.sql))` to assert
  * "the user action triggered a card insert" without coupling to exact
@@ -56,7 +54,7 @@ export interface FixtureHandle {
 }
 
 /**
- * Pre-seed a logged-in session and stub the auth + data worker
+ * Pre-seed a logged-in session and stub the auth + registered action
  * endpoints. Call from `test.beforeEach(...)` before `page.goto(...)`.
  *
  * `queryResponses` lets a test override the default empty
@@ -70,7 +68,7 @@ export async function signInAs(
   page: Page,
   user: Partial<typeof FAKE_USER> = {},
   opts: {
-    queryResponses?: { match: RegExp; rows: unknown[] }[]
+    queryResponses?: { match: RegExp; rows: unknown[] | (() => unknown[]) }[]
   } = {},
 ): Promise<FixtureHandle> {
   const resolved = { ...FAKE_USER, ...user }
@@ -124,7 +122,7 @@ export async function signInAs(
     if (action.operation === 'query') {
       handle.queries.push(...records)
       for (const { match, rows } of queryResponses) {
-        if (records.some((record) => match.test(record.sql))) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows }) })
+        if (records.some((record) => match.test(record.sql))) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows: typeof rows === 'function' ? rows() : rows }) })
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"rows":[]}' })
     }
